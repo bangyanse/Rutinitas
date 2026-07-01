@@ -184,6 +184,28 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .syn-remove{width:30px;height:30px; border:none; background:var(--surface-2); border-radius:8px; color:var(--danger); cursor:pointer; flex:0 0 auto;}
 .syn-add{margin-top:6px; padding:9px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; width:100%;}
 
+/* mini player */
+.mini-player{
+  position:fixed; bottom:calc(56px + env(safe-area-inset-bottom)); left:0; right:0; z-index:29;
+  max-width:560px; margin:0 auto; padding:0 12px;
+  display:none;
+}
+.mini-player.show{display:block;}
+.mini-player-inner{
+  background:var(--ink); color:#fff; border-radius:16px;
+  padding:12px 14px; display:flex; align-items:center; gap:12px;
+  box-shadow:0 4px 20px rgba(0,0,0,.25);
+}
+.mini-player-info{flex:1; min-width:0;}
+.mini-player-cat{font-size:10.5px; font-weight:700; opacity:.6; text-transform:uppercase; letter-spacing:.4px;}
+.mini-player-name{font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;}
+.mini-player-time{font-size:13px; font-weight:600; opacity:.7; margin-top:2px;}
+.mini-player-time.over{color:var(--amber);}
+.mini-player-bar{height:3px; background:rgba(255,255,255,.2); border-radius:999px; margin-top:8px; overflow:hidden;}
+.mini-player-bar-fill{height:100%; background:var(--ig-gradient); border-radius:999px; transition:width .5s linear;}
+.mini-stop{width:36px;height:36px; border-radius:50%; border:none; background:rgba(255,255,255,.15); color:#fff; display:flex;align-items:center;justify-content:center; cursor:pointer; flex:0 0 auto;}
+.mini-stop svg{width:14px;height:14px;}
+
 .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:999px; font-size:13px; font-weight:600; opacity:0; transition:all .25s ease; pointer-events:none; z-index:60; white-space:nowrap;}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 </style>
@@ -399,6 +421,20 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
   </div>
 </div>
 
+<div class="mini-player" id="miniPlayer">
+  <div class="mini-player-inner">
+    <div class="mini-player-info">
+      <div class="mini-player-cat" id="mpCat"></div>
+      <div class="mini-player-name" id="mpName"></div>
+      <div class="mini-player-time mono" id="mpTime"></div>
+      <div class="mini-player-bar"><div class="mini-player-bar-fill" id="mpBar" style="width:0%"></div></div>
+    </div>
+    <button class="mini-stop" id="miniStopBtn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+    </button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -406,18 +442,33 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 const alarmAudio = new Audio('./alarm.mp3');
 alarmAudio.preload = 'auto';
 alarmAudio.volume = 1.0;
-let audioReady = false;
+let audioUnlocked = false;
 
 function unlockAudio(){
-  if(audioReady) return;
+  if(audioUnlocked) return;
+  // silent play untuk unlock — set volume 0 dulu
+  const tmpVol = alarmAudio.volume;
+  alarmAudio.volume = 0;
   alarmAudio.play().then(()=>{
     alarmAudio.pause();
     alarmAudio.currentTime = 0;
-    audioReady = true;
-  }).catch(()=>{});
+    alarmAudio.volume = tmpVol;
+    audioUnlocked = true;
+  }).catch(()=>{ alarmAudio.volume = tmpVol; });
 }
-document.addEventListener('touchstart', unlockAudio, {once:true});
-document.addEventListener('click', unlockAudio, {once:true});
+// unlock saat user tap play timer (bukan touchstart global supaya tidak bunyi saat buka app)
+function playBeep(){
+  try{
+    alarmAudio.currentTime = 0;
+    alarmAudio.play().catch(e=>console.log('alarm error:',e));
+  }catch(e){}
+}
+function stopBeep(){
+  try{
+    alarmAudio.pause();
+    alarmAudio.currentTime = 0;
+  }catch(e){}
+}
 const DB_KEY = 'rutin_app_data_v3';
 function loadDB(){
   try{ const raw = localStorage.getItem(DB_KEY); if(raw) return JSON.parse(raw); }catch(e){}
@@ -656,10 +707,59 @@ function toggleTimer(actId){
     const delta = (Date.now()-t.startTs)/1000;
     act.elapsedSeconds=(act.elapsedSeconds||0)+delta;
     logSeconds(act.category, delta);
-    t.running=false; saveDB();
-  } else { t.running=true; t.startTs=Date.now(); }
+    t.running=false;
+    t.alarmed=false; // reset alarm state
+    stopBeep(); // stop alarm kalau sedang bunyi
+    saveDB();
+  } else {
+    unlockAudio(); // unlock audio saat user tap play
+    t.running=true; t.startTs=Date.now();
+  }
   renderActivities();
+  renderMiniPlayer();
 }
+function renderMiniPlayer(){
+  const runningId = Object.keys(timers).find(id=>timers[id].running);
+  const mp = document.getElementById('miniPlayer');
+  if(!runningId){ mp.classList.remove('show'); return; }
+  // cari activity dari semua hari
+  let act = null;
+  Object.values(DB.days).forEach(list=>{ const found=list.find(a=>a.id===runningId); if(found) act=found; });
+  if(!act){ mp.classList.remove('show'); return; }
+  const elapsed = getElapsedById(runningId);
+  const targetSec = act.duration*60;
+  const over = elapsed>targetSec && targetSec>0;
+  const pct = targetSec>0 ? Math.min(100,(elapsed/targetSec)*100) : 0;
+  document.getElementById('mpCat').textContent = act.category||'';
+  document.getElementById('mpName').textContent = act.name;
+  const mpTime = document.getElementById('mpTime');
+  mpTime.textContent = (over?'+ ':'')+formatTime(over?elapsed-targetSec:elapsed);
+  mpTime.className = 'mini-player-time mono'+(over?' over':'');
+  document.getElementById('mpBar').style.width = pct+'%';
+  mp.classList.add('show');
+}
+function getElapsedById(id){
+  const t = timers[id]; let base=0;
+  Object.values(DB.days).forEach(list=>{ const a=list.find(x=>x.id===id); if(a) base=a.elapsedSeconds||0; });
+  if(t && t.running) base += (Date.now()-t.startTs)/1000;
+  return base;
+}
+document.getElementById('miniStopBtn').addEventListener('click', ()=>{
+  const runningId = Object.keys(timers).find(id=>timers[id].running);
+  if(!runningId) return;
+  // cari act dan stop
+  let act = null;
+  Object.values(DB.days).forEach(list=>{ const found=list.find(a=>a.id===runningId); if(found) act=found; });
+  if(act){
+    const t = timers[runningId];
+    act.elapsedSeconds=(act.elapsedSeconds||0)+(Date.now()-t.startTs)/1000;
+    logSeconds(act.category,(Date.now()-t.startTs)/1000);
+    t.running=false; t.alarmed=false;
+    stopBeep(); saveDB();
+    renderActivities(); renderMiniPlayer();
+  }
+});
+
 setInterval(()=>{
   Object.keys(timers).forEach(id=>{
     const t=timers[id]; if(!t.running) return;
@@ -671,6 +771,7 @@ setInterval(()=>{
     if(barEl){ const pct=targetSec>0?Math.min(100,(elapsed/targetSec)*100):0; barEl.style.width=pct+'%'; barEl.classList.toggle('over',over); }
     if(over && !t.alarmed){ t.alarmed=true; triggerAlarm(act.name); }
   });
+  renderMiniPlayer();
 },1000);
 function triggerAlarm(name){
   showToast(`Waktu ${name} selesai`);
@@ -913,31 +1014,44 @@ document.getElementById('imageFileInput').addEventListener('change', e=>{
   e.target.value='';
 });
 
-/* voice recording */
+/* voice recording - fix untuk Safari iOS */
 document.getElementById('recordBtn').addEventListener('click', ()=>{
   if(isRecording) stopRecording(); else startRecording();
 });
+function getSupportedMimeType(){
+  const types = ['audio/mp4','audio/aac','audio/webm;codecs=opus','audio/webm','audio/ogg'];
+  for(const t of types){ if(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t; }
+  return '';
+}
 function startRecording(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showToast('Rekam suara tidak didukung di browser ini'); return; }
-  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showToast('Rekam suara tidak didukung'); return; }
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}).then(stream=>{
     audioChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e=>audioChunks.push(e.data);
+    const mimeType = getSupportedMimeType();
+    const options = mimeType ? {mimeType} : {};
+    try{ mediaRecorder = new MediaRecorder(stream, options); }
+    catch(e){ mediaRecorder = new MediaRecorder(stream); }
+    mediaRecorder.ondataavailable = e=>{ if(e.data && e.data.size>0) audioChunks.push(e.data); };
     mediaRecorder.onstop = ()=>{
       stream.getTracks().forEach(t=>t.stop());
-      const blob = new Blob(audioChunks, {type:'audio/webm'});
+      const mtype = mediaRecorder.mimeType || 'audio/mp4';
+      const blob = new Blob(audioChunks, {type:mtype});
       const reader = new FileReader();
       reader.onload = ev=>{
-        document.getElementById('noteBody').innerHTML += `<audio controls src="${ev.target.result}"></audio>`;
+        document.getElementById('noteBody').innerHTML += `<audio controls src="${ev.target.result}" style="width:100%;margin:10px 0;border-radius:10px;"></audio>`;
         persistNote();
+        showToast('Rekaman tersimpan');
       };
       reader.readAsDataURL(blob);
     };
-    mediaRecorder.start();
+    mediaRecorder.start(100); // collect data setiap 100ms
     isRecording = true;
     const btn = document.getElementById('recordBtn');
     btn.classList.add('recording');
     document.getElementById('recordBtnLabel').textContent = 'Berhenti';
+    showToast('Merekam...');
+  }).catch(err=>{ showToast('Izin mikrofon ditolak'); console.log(err); });
+}
   }).catch(()=>showToast('Izin mikrofon ditolak'));
 }
 function stopRecording(){
