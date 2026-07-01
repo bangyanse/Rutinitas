@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rutin">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Rutin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface-2:#F2F2F2; --ink:#1C1B19; --ink-soft:#8E8E8E;
+  --line:#EFEFEF; --accent:#C13584; --accent-soft:#FCE4F1; --amber:#F77737; --amber-soft:#FFE9DA;
+  --danger:#ED4956; --radius:18px; --navbar:rgba(255,255,255,0.82);
+  --ig-gradient:linear-gradient(135deg,#4F5BD5,#962FBF,#D62976,#FA7E1E);
+}
+:root.dark{
+  --bg:#000000; --surface:#0D0D0D; --surface-2:#1A1A1A; --ink:#F2F2F2; --ink-soft:#8E8E93;
+  --line:#222222; --accent:#E1306C; --accent-soft:#3A1A2C; --amber:#FA7E1E; --amber-soft:#3A2618;
+  --danger:#FF6B5E; --navbar:rgba(0,0,0,0.78);
+  --ig-gradient:linear-gradient(135deg,#5B51D8,#A23CC4,#E1306C,#FD8D32);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:env(safe-area-inset-bottom); transition:background .2s ease,color .2s ease; overscroll-behavior-y:none;}
+.serif{font-family:'Inter',sans-serif;}
+.mono{font-family:'JetBrains Mono',monospace;}
+button,input,select,textarea{font-family:inherit;}
+#app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
+
+/* tap/press feedback like IG */
+button, .row, .chip, .gram-card, .icon-btn, .day-select-btn, .tab{
+  transition:transform .12s cubic-bezier(.2,.8,.3,1), opacity .12s ease, background .15s ease;
+}
+button:active, .row:active, .chip:active, .gram-card:active, .icon-btn:active, .day-select-btn:active{
+  transform:scale(0.95); opacity:.75;
+}
+.tab:active{ transform:scale(0.9); }
+.play-btn:active, .check-btn:active{ transform:scale(0.85); }
+
+/* view fade transition */
+.view-pane{opacity:0; transition:opacity .18s ease;}
+.view-pane.in{opacity:1;}
+
+.navbar{position:sticky; top:0; z-index:30; background:var(--navbar); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); padding:calc(8px + env(safe-area-inset-top)) 16px 8px; border-bottom:none;}
+.navbar-row{display:flex; align-items:center; justify-content:space-between;}
+.navbar h1{font-size:26px; font-weight:700; margin:0; font-family:'Inter',sans-serif;}
+.icon-btn{width:36px;height:36px;border-radius:50%; border:none; background:var(--surface-2); display:flex;align-items:center;justify-content:center; cursor:pointer; color:var(--ink-soft); flex:0 0 auto;}
+.icon-btn svg{width:17px;height:17px;}
+.navbar-icons{display:flex; gap:8px;}
+.day-select-btn{margin-top:10px; width:100%; display:flex; align-items:center; justify-content:space-between; background:var(--surface); border:none; box-shadow:0 1px 3px rgba(0,0,0,.06); border-radius:14px; padding:11px 14px; font-size:15px; font-weight:600; color:var(--ink); cursor:pointer;}
+.day-select-btn svg{width:15px;height:15px; color:var(--ink-soft);}
+.search-bar{margin-top:10px; display:flex; align-items:center; gap:6px; background:var(--surface-2); border-radius:14px; padding:9px 14px;}
+.search-bar svg{width:15px;height:15px; color:var(--ink-soft); flex:0 0 auto;}
+.search-bar input{border:none; background:none; outline:none; font-size:15px; color:var(--ink); flex:1; min-width:0;}
+.segmented{display:flex; background:var(--surface-2); border-radius:14px; padding:3px; margin-top:10px;}
+.segmented button{flex:1; border:none; background:none; padding:8px 4px; border-radius:11px; font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer;}
+.segmented button.active{background:var(--surface); color:var(--ink); box-shadow:0 2px 8px rgba(0,0,0,.1);}
+
+main{flex:1; padding:14px 16px 100px;}
+.section-label{font-size:12.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin:18px 6px 6px;}
+.section-label:first-child{margin-top:0;}
+
+.grouped{background:none; border-radius:0; overflow:visible; box-shadow:none;}
+.row{display:flex; align-items:center; gap:8px; padding:13px 0; border-bottom:1px solid var(--line); position:relative; background:none;}
+.row:last-child{border-bottom:none;}
+
+.reorder-col{display:flex; flex-direction:column; gap:1px; flex:0 0 auto;}
+.reorder-btn{width:20px;height:16px; border:none; background:none; color:var(--ink-soft); cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;}
+.reorder-btn svg{width:13px;height:13px;}
+.reorder-btn:disabled{opacity:.25;}
+
+.check-btn{width:24px;height:24px; border-radius:50%; border:1.5px solid var(--line); background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:transparent;}
+.check-btn.checked{background:var(--ig-gradient); border-color:transparent; color:#fff;}
+.check-btn svg{width:13px;height:13px;}
+
+.act-main{flex:1; min-width:0;}
+.act-cat-row{display:flex; align-items:center; gap:6px;}
+.act-cat{font-size:10.5px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.3px;}
+.act-neglect{font-size:10px; font-weight:700; color:var(--amber); background:var(--amber-soft); padding:1px 6px; border-radius:6px;}
+.act-name{font-size:15.5px; font-weight:600; margin-top:1px;}
+.act-target{font-size:12px; color:var(--ink-soft); margin-top:1px;}
+.act-timer{display:flex; align-items:center; gap:6px; flex:0 0 auto;}
+.act-time{font-size:13.5px; font-weight:600; min-width:50px; text-align:right;}
+.act-time.over{color:var(--amber);}
+.play-btn{width:32px;height:32px;border-radius:50%; border:none; cursor:pointer; background:var(--ig-gradient); color:#fff; display:flex; align-items:center; justify-content:center; flex:0 0 auto;}
+.play-btn.running{background:var(--danger);}
+.play-btn svg{width:13px;height:13px;}
+.act-edit,.act-note-shortcut{width:24px;height:24px; border:none; background:none; color:var(--ink-soft); cursor:pointer; display:flex;align-items:center;justify-content:center; flex:0 0 auto;}
+.act-note-shortcut{color:var(--accent);}
+.act-edit svg,.act-note-shortcut svg{width:14px;height:14px;}
+.row.done .act-name{color:var(--ink-soft); text-decoration:line-through;}
+.act-bar-bg{position:absolute; left:0; bottom:0; height:2px; background:var(--surface-2); width:100%;}
+.act-bar-fill{height:100%; background:var(--ig-gradient);}
+.act-bar-fill.over{background:var(--amber);}
+
+.add-row{width:100%; padding:14px; border:none; background:none; color:var(--accent); font-weight:600; font-size:14.5px; text-align:left; cursor:pointer; display:flex; align-items:center; gap:8px;}
+.add-row svg{width:18px;height:18px;}
+.empty{text-align:center; padding:60px 20px; color:var(--ink-soft);}
+.empty .serif{font-size:18px; color:var(--ink); margin-bottom:6px; font-weight:600;}
+
+nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(--navbar); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-top:none; padding:7px 0 calc(7px + env(safe-area-inset-bottom)); display:flex; max-width:560px; margin:0 auto;}
+.tab{flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; color:var(--ink-soft); font-size:10px; font-weight:600; cursor:pointer; padding:3px;}
+.tab.active{color:var(--accent); font-weight:700;}
+.tab svg{width:21px; height:21px;}
+
+.chev{color:var(--ink-soft); flex:0 0 auto;}
+.chev svg{width:14px;height:14px;}
+
+.note-title{font-size:15.5px; font-weight:600;}
+.note-snippet{font-size:13px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;}
+.note-date{font-size:11.5px; color:var(--ink-soft); margin-top:3px;}
+.note-thumb{width:42px;height:42px;border-radius:8px;object-fit:cover; flex:0 0 auto;}
+
+.editor-toolbar{display:flex; align-items:center; gap:8px; padding-bottom:10px; flex-wrap:wrap;}
+.editor-toolbar button{display:flex; align-items:center; gap:5px; border:none; background:var(--surface-2); color:var(--ink); padding:9px 14px; border-radius:14px; font-size:13px; font-weight:600; cursor:pointer;}
+.editor-toolbar button.recording{background:var(--danger); color:#fff;}
+.editor-toolbar button svg{width:15px;height:15px;}
+#noteTitle{width:100%; border:none; background:none; font-family:'Inter',sans-serif; font-size:22px; font-weight:600; color:var(--ink); padding:4px 2px 10px; outline:none;}
+#noteBody{width:100%; min-height:340px; border:none; outline:none; background:none; color:var(--ink); font-size:15px; line-height:1.65; padding:2px;}
+#noteBody img{max-width:100%; border-radius:10px; display:block; margin:10px 0;}
+#noteBody audio{width:100%; margin:10px 0;}
+#noteBody:empty:before{content:attr(data-placeholder); color:var(--ink-soft);}
+.save-hint{font-size:12px; color:var(--ink-soft); margin-top:10px; text-align:right;}
+
+.jenis-item{display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line);}
+.jenis-item:last-child{border-bottom:none;}
+.jenis-item-name{flex:1; font-size:15px; font-weight:500;}
+.jenis-item-edit{width:30px;height:30px; border:none; background:var(--surface-2); border-radius:8px; color:var(--ink-soft); cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center;}
+.jenis-item-del{width:30px;height:30px; border:none; background:none; border-radius:8px; color:var(--danger); cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;}
+.jenis-item input{flex:1; padding:7px 10px; border-radius:10px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;}
+.kamus-term{font-size:15px; font-weight:700;}
+.kamus-tag{font-size:10px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:6px; text-transform:uppercase; letter-spacing:.3px; flex:0 0 auto;}
+.kamus-arti{font-size:13px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.gram-card{background:var(--surface-2); border:none; box-shadow:none; border-radius:18px; padding:14px 15px; margin-bottom:10px; cursor:pointer;}
+.gram-title{font-size:15.5px; font-weight:700;}
+.gram-pola{font-size:12.5px; color:var(--accent); font-weight:600; margin-top:3px;}
+.gram-snippet{font-size:13px; color:var(--ink-soft); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+
+/* progress view */
+.stat-card{background:none; border:none; box-shadow:none; border-radius:0; padding:24px 0 16px; margin-bottom:0; text-align:center;}
+.stat-num{font-size:52px; font-weight:700; font-family:'Inter',sans-serif; background:var(--ig-gradient); -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1.1;}
+.stat-label{font-size:14px; color:var(--ink-soft); margin-top:4px;}
+.bar-row{margin-bottom:14px;}
+.bar-row-top{display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;}
+.bar-row-top .cat{font-weight:600;}
+.bar-row-top .val{color:var(--ink-soft);}
+.bar-track-h{height:6px; background:var(--surface-2); border-radius:999px; overflow:hidden;}
+.bar-fill-h{height:100%; background:var(--ig-gradient); border-radius:999px;}
+.neglect-item{display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); font-size:14px;}
+.neglect-item:last-child{border-bottom:none;}
+.neglect-days{font-size:12px; font-weight:700; color:var(--amber);}
+
+.overlay{position:fixed; inset:0; background:rgba(0,0,0,.35); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); display:flex; align-items:flex-end; justify-content:center; z-index:50; opacity:0; pointer-events:none; transition:opacity .25s ease;}
+.overlay.show{opacity:1; pointer-events:auto;}
+.sheet{background:var(--surface); border:1px solid var(--line); width:100%; max-width:560px; border-radius:26px 26px 0 0; padding:18px 18px calc(18px + env(safe-area-inset-bottom)); transform:translateY(30px); transition:transform .28s cubic-bezier(.2,.9,.3,1); max-height:88vh; overflow-y:auto;}
+.overlay.show .sheet{transform:translateY(0);}
+.sheet h3{margin:0 0 14px; font-size:18px; font-family:'Inter',sans-serif;}
+.field{margin-bottom:13px;}
+.field label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;}
+.field input,.field select,.field textarea{width:100%; padding:12px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;}
+.field textarea{min-height:65px; resize:vertical;}
+.field-hint{font-size:11.5px; color:var(--ink-soft); margin-top:5px;}
+.sheet-actions{display:flex; gap:10px; margin-top:8px;}
+.btn{flex:1; padding:14px; border-radius:16px; border:none; font-weight:700; font-size:14.5px; cursor:pointer;}
+.btn.primary{background:var(--ig-gradient); color:#fff;}
+.btn.ghost{background:var(--surface-2); color:var(--ink);}
+.btn.danger-text{background:none; color:var(--danger); flex:0 0 auto; padding:13px 14px;}
+.chip-row{display:flex; flex-wrap:wrap; gap:7px;}
+.chip{padding:7px 13px; border-radius:999px; background:var(--surface-2); border:none; font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer;}
+.chip.active{background:var(--ig-gradient); color:#fff; border-color:transparent;}
+.option-list .opt-row{padding:13px 6px; font-size:15.5px; font-weight:500; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); cursor:pointer;}
+.option-list .opt-row:last-child{border-bottom:none;}
+.opt-row.selected{color:var(--accent); font-weight:700;}
+.opt-row svg{width:16px;height:16px;}
+.syn-list{display:flex; flex-direction:column; gap:6px; margin-top:6px;}
+.syn-item{display:flex; gap:6px; align-items:center;}
+.syn-item input{flex:1;}
+.syn-remove{width:30px;height:30px; border:none; background:var(--surface-2); border-radius:8px; color:var(--danger); cursor:pointer; flex:0 0 auto;}
+.syn-add{margin-top:6px; padding:9px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; width:100%;}
+
+.toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:999px; font-size:13px; font-weight:600; opacity:0; transition:all .25s ease; pointer-events:none; z-index:60; white-space:nowrap;}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="navbar" id="navbarToday">
+    <div class="navbar-row">
+      <h1>Rutin</h1>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:10px; color:var(--ink-soft); font-weight:600;">v1.4</span>
+        <button class="icon-btn" id="settingsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button class="icon-btn" id="themeBtn1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
+      </div>
+    </div>
+    <button class="day-select-btn" id="daySelectBtn">
+      <span id="daySelectLabel">Senin</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+  </div>
+  <div id="view-today" class="view-pane"><main id="activityWrap"></main></div>
+
+  <!-- NOTES -->
+  <div class="navbar" id="navbarNotes" style="display:none;">
+    <div class="navbar-row">
+      <h1>Catatan</h1>
+      <div class="navbar-icons">
+        <button class="icon-btn" id="themeBtn2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
+        <button class="icon-btn" id="addNoteBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+    </div>
+    <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="notesSearch" placeholder="Cari catatan"></div>
+  </div>
+  <div id="view-notes" class="view-pane" style="display:none;">
+    <div id="notesListMode"><main id="notesList"></main></div>
+    <div id="notesEditorMode" style="display:none;">
+      <div class="navbar">
+        <div class="navbar-row">
+          <button class="icon-btn" id="noteBackBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span id="noteDateLabel" style="font-size:13px; color:var(--ink-soft); font-weight:600;"></span>
+          <button class="icon-btn" id="noteDeleteBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+        </div>
+      </div>
+      <main>
+        <div class="editor-toolbar">
+          <button id="addImageBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Gambar</button>
+          <button id="recordBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span id="recordBtnLabel">Rekam</span></button>
+        </div>
+        <input type="text" id="noteTitle" placeholder="Judul">
+        <div id="noteBody" contenteditable="true" data-placeholder="Tulis catatan..."></div>
+        <div class="save-hint" id="noteSaveHint">Tersimpan otomatis</div>
+      </main>
+    </div>
+  </div>
+  <input type="file" id="imageFileInput" accept="image/*" style="display:none;">
+
+  <!-- KAMUS -->
+  <div class="navbar" id="navbarKamus" style="display:none;">
+    <div class="navbar-row">
+      <h1>Kamus</h1>
+      <div class="navbar-icons">
+        <button class="icon-btn" id="themeBtn3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
+        <button class="icon-btn" id="addKamusBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+    </div>
+    <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="kamusSearch" placeholder="Cari di semua kategori"></div>
+    <div class="segmented" id="kamusSegmented">
+      <button class="active" data-type="vocab">Vocab</button>
+      <button data-type="frasa">Frasa</button>
+      <button data-type="conjunction">Conj.</button>
+      <button data-type="grammar">Grammar</button>
+    </div>
+  </div>
+  <div id="view-kamus" class="view-pane" style="display:none;"><main id="kamusList"></main></div>
+
+  <!-- PROGRESS -->
+  <div class="navbar" id="navbarProgress" style="display:none;">
+    <div class="navbar-row">
+      <h1>Progress</h1>
+      <button class="icon-btn" id="themeBtn4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
+    </div>
+  </div>
+  <div id="view-progress" class="view-pane" style="display:none;"><main id="progressContent"></main></div>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Hari ini</button>
+    <button class="tab" data-view="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Catatan</button>
+    <button class="tab" data-view="kamus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h6M9 11h4"/></svg>Kamus</button>
+    <button class="tab" data-view="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Progress</button>
+  </nav>
+</div>
+
+<!-- Day picker sheet -->
+<div class="overlay" id="dayOverlay"><div class="sheet"><h3>Pilih hari</h3><div class="option-list" id="dayOptionList"></div></div></div>
+
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <h3>Pengaturan</h3>
+    <div class="field">
+      <label>Cadangkan data</label>
+      <button class="btn ghost" id="exportBtn" style="width:100%;">Export data (.json)</button>
+      <div class="field-hint">Simpan semua kegiatan, catatan, dan kamus ke 1 file. Berguna sebelum ganti HP atau hapus app.</div>
+    </div>
+    <div class="field">
+      <label>Pulihkan data</label>
+      <button class="btn ghost" id="importBtn" style="width:100%;">Import data (.json)</button>
+      <div class="field-hint">Data saat ini akan ditimpa oleh file yang diimpor.</div>
+    </div>
+    <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
+    <div class="sheet-actions"><button class="btn primary" id="settingsCloseBtn">Tutup</button></div>
+  </div>
+</div>
+
+<!-- Kelola jenis -->
+<div class="overlay" id="jenisOverlay">
+  <div class="sheet">
+    <h3>Kelola Jenis Kegiatan</h3>
+    <div id="jenisList" style="margin-bottom:14px;"></div>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="jenisNewInput" placeholder="Tambah jenis baru..." style="flex:1; padding:11px 13px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;">
+      <button class="btn primary" id="jenisAddBtn" style="flex:0 0 auto; width:auto; padding:11px 16px;">Tambah</button>
+    </div>
+    <div class="sheet-actions" style="margin-top:12px;">
+      <button class="btn ghost" id="jenisDoneBtn">Selesai</button>
+    </div>
+  </div>
+</div>
+
+<!-- Activity sheet -->
+<div class="overlay" id="activityOverlay">
+  <div class="sheet">
+    <h3 id="activitySheetTitle">Tambah kegiatan</h3>
+    <div class="field">
+      <label>Jenis <button type="button" id="manageJenisBtn" style="font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; cursor:pointer; padding:0 4px;">Kelola</button></label>
+      <div class="chip-row" id="jenisChips" style="margin-bottom:6px;"></div>
+    </div>
+    <div class="field"><label>Nama kegiatan</label><input type="text" id="actName" placeholder="mis. Ngaji, Workout, Catur..."></div>
+    <div class="field"><label>Target durasi (menit)</label><input type="number" id="actDuration" inputmode="numeric" placeholder="mis. 30"></div>
+    <div class="field" id="actDaysField"><label>Terapkan ke hari</label><div class="chip-row" id="actDaysChips"></div></div>
+    <div class="sheet-actions">
+      <button class="btn danger-text" id="actDeleteBtn" style="display:none;">Hapus</button>
+      <button class="btn ghost" id="actCancelBtn">Batal</button>
+      <button class="btn primary" id="actSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- vocab -->
+<div class="overlay" id="vocabOverlay">
+  <div class="sheet">
+    <h3 id="vocabSheetTitle">Tambah Vocab</h3>
+    <div class="field"><label>Kata</label><input type="text" id="vocabTerm" placeholder="mis. run"></div>
+    <div class="field"><label>Jenis kata</label><select id="vocabClass"><option>Verb</option><option>Noun</option><option>Adjective</option></select></div>
+    <div id="vocabVerbFields">
+      <div class="field"><label>V2 (past)</label><input type="text" id="vocabV2" placeholder="mis. ran"></div>
+      <div class="field"><label>V3 (past participle)</label><input type="text" id="vocabV3" placeholder="mis. run"></div>
+    </div>
+    <div class="field"><label>Arti</label><textarea id="vocabArti" placeholder="Artinya..."></textarea></div>
+    <div class="sheet-actions">
+      <button class="btn danger-text" id="vocabDeleteBtn" style="display:none;">Hapus</button>
+      <button class="btn ghost" id="vocabCancelBtn">Batal</button>
+      <button class="btn primary" id="vocabSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- frasa -->
+<div class="overlay" id="frasaOverlay">
+  <div class="sheet">
+    <h3 id="frasaSheetTitle">Tambah Frasa</h3>
+    <div class="field"><label>Frasa utama</label><input type="text" id="frasaTerm" placeholder="mis. in spite of"></div>
+    <div class="field"><label>Frasa lain dengan makna sama</label><div class="syn-list" id="synList"></div><button class="syn-add" id="synAddBtn">+ Tambah frasa lain</button></div>
+    <div class="field"><label>Arti</label><textarea id="frasaArti" placeholder="Artinya..."></textarea></div>
+    <div class="sheet-actions">
+      <button class="btn danger-text" id="frasaDeleteBtn" style="display:none;">Hapus</button>
+      <button class="btn ghost" id="frasaCancelBtn">Batal</button>
+      <button class="btn primary" id="frasaSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- conjunction -->
+<div class="overlay" id="conjOverlay">
+  <div class="sheet">
+    <h3 id="conjSheetTitle">Tambah Conjunction</h3>
+    <div class="field"><label>Kata</label><input type="text" id="conjTerm" placeholder="mis. although"></div>
+    <div class="field"><label>Kegunaan</label><textarea id="conjKegunaan" placeholder="Dipakai untuk..."></textarea></div>
+    <div class="field"><label>Arti</label><input type="text" id="conjArti" placeholder="Artinya..."></div>
+    <div class="sheet-actions">
+      <button class="btn danger-text" id="conjDeleteBtn" style="display:none;">Hapus</button>
+      <button class="btn ghost" id="conjCancelBtn">Batal</button>
+      <button class="btn primary" id="conjSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- grammar -->
+<div class="overlay" id="gramOverlay">
+  <div class="sheet">
+    <h3 id="gramSheetTitle">Tambah Grammar</h3>
+    <div class="field"><label>Judul topik</label><input type="text" id="gramTerm" placeholder="mis. Present Perfect Tense"></div>
+    <div class="field"><label>Pola/Rumus</label><input type="text" id="gramPola" placeholder="mis. S + have/has + V3"></div>
+    <div class="field"><label>Penjelasan</label><textarea id="gramPenjelasan" placeholder="Penjelasan singkat..."></textarea></div>
+    <div class="field"><label>Contoh kalimat</label><textarea id="gramContoh" placeholder="Contoh penggunaan..."></textarea></div>
+    <div class="field"><label>Catatan/pengecualian (opsional)</label><textarea id="gramCatatan" placeholder="Hal yang sering keliru..."></textarea></div>
+    <div class="sheet-actions">
+      <button class="btn danger-text" id="gramDeleteBtn" style="display:none;">Hapus</button>
+      <button class="btn ghost" id="gramCancelBtn">Batal</button>
+      <button class="btn primary" id="gramSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= storage ================= */
+const DB_KEY = 'rutin_app_data_v3';
+function loadDB(){
+  try{ const raw = localStorage.getItem(DB_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return { days:{}, notes:[], kamus:[], history:{}, categoryLastActive:{}, jenisList:['Ngaji','Workout','Gambar','IELTS','Logic','Buku/Nonton','Musik','Nulis'] };
+}
+function saveDB(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }catch(e){ showToast('Penyimpanan penuh, hapus gambar/rekaman lama'); } }
+let DB = loadDB();
+if(!DB.history) DB.history={};
+if(!DB.categoryLastActive) DB.categoryLastActive={};
+const DAY_NAMES = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+function ensureDay(key){ if(!DB.days[key]) DB.days[key]=[]; return DB.days[key]; }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function todayKey(d=new Date()){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+let toastTimer;
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),1800); }
+
+/* ================= history / streak helpers ================= */
+function logSeconds(category, deltaSec){
+  if(deltaSec<=0) return;
+  const key = todayKey();
+  if(!DB.history[key]) DB.history[key]={seconds:{}, total:0, doneCount:0};
+  const h = DB.history[key];
+  h.seconds[category]=(h.seconds[category]||0)+deltaSec;
+  h.total += deltaSec;
+  DB.categoryLastActive[category]=key;
+  saveDB();
+}
+function logDoneToggle(category, isDone){
+  const key = todayKey();
+  if(!DB.history[key]) DB.history[key]={seconds:{}, total:0, doneCount:0};
+  DB.history[key].doneCount += isDone?1:-1;
+  if(isDone) DB.categoryLastActive[category]=key;
+  saveDB();
+}
+function computeStreak(){
+  let streak=0; let d=new Date();
+  while(true){
+    const h = DB.history[todayKey(d)];
+    if(h && (h.total>0 || h.doneCount>0)){ streak++; d.setDate(d.getDate()-1); } else break;
+  }
+  return streak;
+}
+function weeklySummary(){
+  const sums={};
+  for(let i=0;i<7;i++){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    const h=DB.history[todayKey(d)];
+    if(h) Object.keys(h.seconds).forEach(cat=>{ sums[cat]=(sums[cat]||0)+h.seconds[cat]; });
+  }
+  return sums;
+}
+function daysSinceActive(category){
+  const key = DB.categoryLastActive[category];
+  if(!key) return null;
+  const last = new Date(key+'T00:00:00');
+  const today = new Date(todayKey()+'T00:00:00');
+  return Math.floor((today-last)/86400000);
+}
+function allCategoriesInUse(){
+  const set = new Set();
+  Object.values(DB.days).forEach(list=>list.forEach(a=>set.add(a.category)));
+  return Array.from(set);
+}
+
+/* ================= theme ================= */
+if(localStorage.getItem('rutin_theme')==='dark') document.documentElement.classList.add('dark');
+function toggleTheme(){
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('rutin_theme', document.documentElement.classList.contains('dark')?'dark':'light');
+}
+['themeBtn1','themeBtn2','themeBtn3','themeBtn4'].forEach(id=>document.getElementById(id).addEventListener('click', toggleTheme));
+
+/* ================= settings / export-import ================= */
+document.getElementById('settingsBtn').addEventListener('click', ()=>document.getElementById('settingsOverlay').classList.add('show'));
+document.getElementById('settingsCloseBtn').addEventListener('click', ()=>document.getElementById('settingsOverlay').classList.remove('show'));
+document.getElementById('settingsOverlay').addEventListener('click', e=>{ if(e.target.id==='settingsOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(DB,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'rutin-backup-'+todayKey()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('File backup diunduh');
+});
+document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importFileInput').click());
+document.getElementById('importFileInput').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const parsed = JSON.parse(ev.target.result);
+      if(!confirm('Data saat ini akan ditimpa oleh file ini. Lanjutkan?')){ return; }
+      DB = Object.assign({days:{}, notes:[], kamus:[], history:{}, categoryLastActive:{}}, parsed);
+      saveDB();
+      renderDayLabel(); renderActivities(); renderNotesList(); renderKamus(); renderProgress();
+      showToast('Data berhasil dipulihkan');
+      document.getElementById('settingsOverlay').classList.remove('show');
+    }catch(err){ showToast('File tidak valid'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+/* ================= tabs/views ================= */
+const views = ['today','notes','kamus','progress'];
+function switchView(v){
+  views.forEach(name=>{
+    const el = document.getElementById('view-'+name);
+    if(name===v){
+      el.style.display='';
+      el.classList.remove('in');
+      void el.offsetWidth; // force reflow to restart transition
+      requestAnimationFrame(()=>el.classList.add('in'));
+    } else {
+      el.classList.remove('in');
+      el.style.display='none';
+    }
+  });
+  document.getElementById('navbarToday').style.display = v==='today'?'':'none';
+  document.getElementById('navbarNotes').style.display = v==='notes'?'':'none';
+  document.getElementById('navbarKamus').style.display = v==='kamus'?'':'none';
+  document.getElementById('navbarProgress').style.display = v==='progress'?'':'none';
+  document.querySelectorAll('.tab').forEach(btn=>btn.classList.toggle('active', btn.dataset.view===v));
+  if(v==='notes') renderNotesList();
+  if(v==='kamus') renderKamus();
+  if(v==='progress') renderProgress();
+  if(v==='today') renderActivities();
+}
+document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click', ()=>switchView(btn.dataset.view)));
+
+/* ================= day picker ================= */
+let selectedDayIndex = new Date().getDay();
+function renderDayLabel(){ document.getElementById('daySelectLabel').textContent = DAY_NAMES[selectedDayIndex]; }
+document.getElementById('daySelectBtn').addEventListener('click', ()=>{
+  const list = document.getElementById('dayOptionList'); list.innerHTML='';
+  DAY_NAMES.forEach((name,idx)=>{
+    const row = document.createElement('div');
+    row.className = 'opt-row'+(idx===selectedDayIndex?' selected':'');
+    row.innerHTML = `<span>${name}</span>` + (idx===selectedDayIndex?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':'');
+    row.addEventListener('click', ()=>{
+      selectedDayIndex = idx; renderDayLabel(); renderActivities();
+      document.getElementById('dayOverlay').classList.remove('show');
+    });
+    list.appendChild(row);
+  });
+  document.getElementById('dayOverlay').classList.add('show');
+});
+document.getElementById('dayOverlay').addEventListener('click', e=>{ if(e.target.id==='dayOverlay') e.currentTarget.classList.remove('show'); });
+
+/* ================= activities ================= */
+const timers = {};
+function formatTime(sec){
+  sec=Math.max(0,Math.round(sec));
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+  const pad=n=>String(n).padStart(2,'0');
+  return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+function getActivities(){ return ensureDay(String(selectedDayIndex)); }
+function getElapsed(act){
+  const t=timers[act.id]; let base=act.elapsedSeconds||0;
+  if(t && t.running) base += (Date.now()-t.startTs)/1000;
+  return base;
+}
+function renderActivities(){
+  const list = getActivities();
+  const wrap = document.getElementById('activityWrap');
+  wrap.innerHTML='';
+  if(list.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="serif">Belum ada kegiatan</div>Tambahkan rutinitas untuk hari ${DAY_NAMES[selectedDayIndex]}.</div>`;
+  } else {
+    const grouped = document.createElement('div'); grouped.className='grouped';
+    list.forEach((act,idx)=>{
+      const targetSec = act.duration*60;
+      const elapsed = getElapsed(act);
+      const pct = targetSec>0 ? Math.min(100,(elapsed/targetSec)*100) : 0;
+      const over = elapsed>targetSec && targetSec>0;
+      const t=timers[act.id]; const running = t&&t.running;
+      const neglectDays = daysSinceActive(act.category);
+      const row = document.createElement('div');
+      row.className = 'row'+(act.done?' done':'');
+      row.innerHTML = `
+        <div class="reorder-col">
+          <button class="reorder-btn" data-up="${act.id}" ${idx===0?'disabled':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+          <button class="reorder-btn" data-down="${act.id}" ${idx===list.length-1?'disabled':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+        </div>
+        <button class="check-btn ${act.done?'checked':''}" data-check="${act.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></button>
+        <div class="act-main">
+          <div class="act-cat-row"><span class="act-cat">${escapeHtml(act.category||'Lainnya')}</span>${(neglectDays!==null && neglectDays>=3)?`<span class="act-neglect">${neglectDays} hari</span>`:''}</div>
+          <div class="act-name">${escapeHtml(act.name)}</div>
+          <div class="act-target">Target ${act.duration} menit</div>
+        </div>
+        <div class="act-timer">
+          <div class="act-time mono ${over?'over':''}" data-time="${act.id}">${over?'+':''}${formatTime(over?elapsed-targetSec:elapsed)}</div>
+          <button class="play-btn ${running?'running':''}" data-toggle="${act.id}">${running?'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'}</button>
+          ${act.category==='Nulis'?`<button class="act-note-shortcut" data-gonote="${act.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>`:''}
+          <button class="act-edit" data-edit="${act.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4v16h16v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        </div>
+        <div class="act-bar-bg"><div class="act-bar-fill ${over?'over':''}" data-bar="${act.id}" style="width:${pct}%"></div></div>
+      `;
+      grouped.appendChild(row);
+    });
+    wrap.appendChild(grouped);
+  }
+  const addBtn = document.createElement('button'); addBtn.className='add-row';
+  addBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Tambah kegiatan';
+  addBtn.addEventListener('click', ()=>openActivitySheet(null));
+  wrap.appendChild(addBtn);
+
+  wrap.querySelectorAll('[data-toggle]').forEach(btn=>btn.addEventListener('click', ()=>toggleTimer(btn.dataset.toggle)));
+  wrap.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>{ const act=getActivities().find(a=>a.id===btn.dataset.edit); openActivitySheet(act); }));
+  wrap.querySelectorAll('[data-gonote]').forEach(btn=>btn.addEventListener('click', ()=>{ switchView('notes'); openNoteEditor(null); }));
+  wrap.querySelectorAll('[data-check]').forEach(btn=>btn.addEventListener('click', ()=>toggleDone(btn.dataset.check)));
+  wrap.querySelectorAll('[data-up]').forEach(btn=>btn.addEventListener('click', ()=>moveActivity(btn.dataset.up,-1)));
+  wrap.querySelectorAll('[data-down]').forEach(btn=>btn.addEventListener('click', ()=>moveActivity(btn.dataset.down,1)));
+}
+function moveActivity(id,dir){
+  const list = getActivities();
+  const idx = list.findIndex(a=>a.id===id); if(idx<0) return;
+  const newIdx = idx+dir; if(newIdx<0||newIdx>=list.length) return;
+  [list[idx],list[newIdx]] = [list[newIdx],list[idx]];
+  saveDB(); renderActivities();
+}
+function toggleDone(id){
+  const act = getActivities().find(a=>a.id===id); if(!act) return;
+  const t = timers[id];
+  if(t && t.running){ act.elapsedSeconds=(act.elapsedSeconds||0)+(Date.now()-t.startTs)/1000; logSeconds(act.category,(Date.now()-t.startTs)/1000); t.running=false; }
+  act.done = !act.done;
+  logDoneToggle(act.category, act.done);
+  saveDB(); renderActivities();
+}
+function toggleTimer(actId){
+  const act = getActivities().find(a=>a.id===actId); if(!act) return;
+  let t = timers[actId]; if(!t) t = timers[actId]={running:false, startTs:0, alarmed:false};
+  if(t.running){
+    const delta = (Date.now()-t.startTs)/1000;
+    act.elapsedSeconds=(act.elapsedSeconds||0)+delta;
+    logSeconds(act.category, delta);
+    t.running=false; saveDB();
+  } else { t.running=true; t.startTs=Date.now(); }
+  renderActivities();
+}
+setInterval(()=>{
+  Object.keys(timers).forEach(id=>{
+    const t=timers[id]; if(!t.running) return;
+    const act = getActivities().find(a=>a.id===id); if(!act) return;
+    const elapsed = getElapsed(act); const targetSec = act.duration*60;
+    const timeEl = document.querySelector(`[data-time="${id}"]`); const barEl = document.querySelector(`[data-bar="${id}"]`);
+    const over = elapsed>targetSec && targetSec>0;
+    if(timeEl){ timeEl.textContent=(over?'+':'')+formatTime(over?elapsed-targetSec:elapsed); timeEl.classList.toggle('over',over); }
+    if(barEl){ const pct=targetSec>0?Math.min(100,(elapsed/targetSec)*100):0; barEl.style.width=pct+'%'; barEl.classList.toggle('over',over); }
+    if(over && !t.alarmed){ t.alarmed=true; triggerAlarm(act.name); }
+  });
+},1000);
+function triggerAlarm(name){
+  showToast(`Waktu ${name} selesai`);
+  if(navigator.vibrate) navigator.vibrate([200,100,200,100,200]);
+  playBeep();
+}
+function playBeep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [880,1046].forEach((freq,i)=>{
+      setTimeout(()=>{
+        const o=ctx.createOscillator(), g=ctx.createGain();
+        o.type='sine'; o.frequency.value=freq;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02);
+        o.connect(g); g.connect(ctx.destination); o.start();
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.9);
+        o.stop(ctx.currentTime+0.95);
+      }, i*250);
+    });
+  }catch(e){}
+}
+
+/* activity sheet — jenis custom */
+let editingActivityId = null;
+let selectedJenis = '';
+let selectedApplyDays = new Set();
+
+const DEFAULT_JENIS = ['Ngaji','Workout','Gambar','IELTS','Logic','Buku/Nonton','Musik','Nulis'];
+if(!DB.jenisList) DB.jenisList = [...DEFAULT_JENIS];
+
+function getJenisList(){ return DB.jenisList; }
+
+function renderJenisChips(){
+  const wrap = document.getElementById('jenisChips'); wrap.innerHTML='';
+  getJenisList().forEach(j=>{
+    const chip = document.createElement('button');
+    chip.type='button'; chip.className='chip'+(selectedJenis===j?' active':'');
+    chip.textContent = j;
+    chip.addEventListener('click', ()=>{ selectedJenis=j; renderJenisChips(); });
+    wrap.appendChild(chip);
+  });
+  const addChip = document.createElement('button');
+  addChip.type='button'; addChip.className='chip';
+  addChip.style.cssText='color:var(--accent); background:var(--accent-soft);';
+  addChip.textContent='+ Baru';
+  addChip.addEventListener('click', ()=>{
+    document.getElementById('activityOverlay').classList.remove('show');
+    setTimeout(()=>document.getElementById('jenisOverlay').classList.add('show'),200);
+  });
+  wrap.appendChild(addChip);
+}
+
+function renderJenisManagedList(){
+  const wrap = document.getElementById('jenisList'); wrap.innerHTML='';
+  getJenisList().forEach((j,idx)=>{
+    const row = document.createElement('div'); row.className='jenis-item';
+    row.innerHTML = `
+      <span class="jenis-item-name" data-jidx="${idx}">${escapeHtml(j)}</span>
+      <button class="jenis-item-edit" data-jedit="${idx}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4v16h16v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+      <button class="jenis-item-del" data-jdel="${idx}">&times;</button>
+    `;
+    row.querySelector('[data-jedit]').addEventListener('click', ()=>{
+      const span = row.querySelector('.jenis-item-name');
+      const cur = DB.jenisList[idx];
+      const input = document.createElement('input');
+      input.value = cur; input.className='jenis-item-name';
+      span.replaceWith(input); input.focus();
+      input.addEventListener('blur', ()=>{
+        const newVal = input.value.trim(); if(newVal) DB.jenisList[idx]=newVal;
+        saveDB(); renderJenisManagedList(); renderJenisChips();
+      });
+      input.addEventListener('keydown', e=>{ if(e.key==='Enter') input.blur(); });
+    });
+    row.querySelector('[data-jdel]').addEventListener('click', ()=>{
+      if(DB.jenisList.length<=1){ showToast('Minimal harus ada 1 jenis'); return; }
+      DB.jenisList.splice(idx,1); saveDB(); renderJenisManagedList(); renderJenisChips();
+    });
+    wrap.appendChild(row);
+  });
+}
+
+document.getElementById('manageJenisBtn').addEventListener('click', ()=>{
+  document.getElementById('activityOverlay').classList.remove('show');
+  renderJenisManagedList();
+  setTimeout(()=>document.getElementById('jenisOverlay').classList.add('show'),200);
+});
+document.getElementById('jenisAddBtn').addEventListener('click', ()=>{
+  const val = document.getElementById('jenisNewInput').value.trim();
+  if(!val){ showToast('Ketik nama jenis dulu'); return; }
+  if(DB.jenisList.includes(val)){ showToast('Jenis sudah ada'); return; }
+  DB.jenisList.push(val); saveDB();
+  document.getElementById('jenisNewInput').value='';
+  selectedJenis = val;
+  renderJenisManagedList(); renderJenisChips();
+});
+document.getElementById('jenisNewInput').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('jenisAddBtn').click(); });
+document.getElementById('jenisDoneBtn').addEventListener('click', ()=>{
+  document.getElementById('jenisOverlay').classList.remove('show');
+  setTimeout(()=>document.getElementById('activityOverlay').classList.add('show'),200);
+});
+document.getElementById('jenisOverlay').addEventListener('click', e=>{ if(e.target.id==='jenisOverlay') e.currentTarget.classList.remove('show'); });
+
+function renderDayChips(){
+  const wrap = document.getElementById('actDaysChips'); wrap.innerHTML='';
+  DAY_NAMES.forEach((name,idx)=>{
+    const chip = document.createElement('button');
+    chip.type='button'; chip.className='chip'+(selectedApplyDays.has(idx)?' active':'');
+    chip.textContent = name.slice(0,3);
+    chip.addEventListener('click', ()=>{ if(selectedApplyDays.has(idx)) selectedApplyDays.delete(idx); else selectedApplyDays.add(idx); renderDayChips(); });
+    wrap.appendChild(chip);
+  });
+}
+
+function openActivitySheet(act){
+  editingActivityId = act? act.id : null;
+  document.getElementById('activitySheetTitle').textContent = act?'Edit kegiatan':'Tambah kegiatan';
+  selectedJenis = act? (act.category||getJenisList()[0]) : getJenisList()[0];
+  renderJenisChips();
+  document.getElementById('actName').value = act?act.name:'';
+  document.getElementById('actDuration').value = act?act.duration:'';
+  document.getElementById('actDeleteBtn').style.display = act?'':'none';
+  document.getElementById('actDaysField').style.display = act?'none':'';
+  selectedApplyDays = new Set([selectedDayIndex]);
+  renderDayChips();
+  document.getElementById('activityOverlay').classList.add('show');
+}
+function closeActivitySheet(){ document.getElementById('activityOverlay').classList.remove('show'); }
+document.getElementById('actCancelBtn').addEventListener('click', closeActivitySheet);
+document.getElementById('activityOverlay').addEventListener('click', e=>{ if(e.target.id==='activityOverlay') closeActivitySheet(); });
+document.getElementById('actSaveBtn').addEventListener('click', ()=>{
+  const name = document.getElementById('actName').value.trim();
+  const duration = parseInt(document.getElementById('actDuration').value)||0;
+  const category = selectedJenis || getJenisList()[0];
+  if(!name){ showToast('Nama kegiatan belum diisi'); return; }
+  if(!category){ showToast('Pilih jenis kegiatan dulu'); return; }
+  if(editingActivityId){
+    const act = getActivities().find(a=>a.id===editingActivityId);
+    act.name=name; act.duration=duration; act.category=category;
+  } else {
+    const days = selectedApplyDays.size>0? Array.from(selectedApplyDays) : [selectedDayIndex];
+    days.forEach(dayIdx=>{
+      ensureDay(String(dayIdx)).push({id:'a'+Date.now()+Math.random().toString(36).slice(2,6)+dayIdx, name, category, duration, elapsedSeconds:0, done:false});
+    });
+  }
+  saveDB(); closeActivitySheet(); renderActivities();
+});
+document.getElementById('actDeleteBtn').addEventListener('click', ()=>{
+  const list = getActivities(); const idx = list.findIndex(a=>a.id===editingActivityId);
+  if(idx>-1) list.splice(idx,1);
+  delete timers[editingActivityId];
+  saveDB(); closeActivitySheet(); renderActivities();
+});
+
+/* ================= notes ================= */
+if(!DB.notes) DB.notes=[];
+let editingNoteId = null;
+let mediaRecorder=null, audioChunks=[], isRecording=false;
+function renderNotesList(){
+  const q=(document.getElementById('notesSearch').value||'').toLowerCase();
+  const list = DB.notes.filter(n=> !q || ((n.title||'')+(n.body||'')).toLowerCase().includes(q)).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  const container = document.getElementById('notesList'); container.innerHTML='';
+  if(list.length===0){ container.innerHTML = `<div class="empty"><div class="serif">Belum ada catatan</div>Tulis catatan harian, pelajaran baru, atau apa saja.</div>`; return; }
+  const grouped = document.createElement('div'); grouped.className='grouped';
+  list.forEach(n=>{
+    const dateStr = new Date(n.updatedAt).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const plain = (n.body||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    const imgMatch = (n.body||'').match(/<img[^>]+src="([^"]+)"/);
+    const hasAudio = (n.body||'').includes('<audio');
+    const row = document.createElement('div'); row.className='row note-row';
+    row.innerHTML = `
+      <div class="act-main">
+        <div class="note-title">${escapeHtml(n.title||'Tanpa judul')}${hasAudio?' 🎙':''}</div>
+        <div class="note-snippet">${escapeHtml(plain).slice(0,70) || 'Tidak ada isi'}</div>
+        <div class="note-date">${dateStr}</div>
+      </div>
+      ${imgMatch?`<img class="note-thumb" src="${imgMatch[1]}">`:''}
+      <div class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+    `;
+    row.addEventListener('click', ()=>openNoteEditor(n));
+    grouped.appendChild(row);
+  });
+  container.appendChild(grouped);
+}
+document.getElementById('notesSearch').addEventListener('input', renderNotesList);
+function openNoteEditor(note){
+  editingNoteId = note? note.id : null;
+  document.getElementById('noteTitle').value = note? note.title : '';
+  document.getElementById('noteBody').innerHTML = note? (note.body||'') : '';
+  document.getElementById('noteDateLabel').textContent = note? new Date(note.updatedAt).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}) : 'Catatan baru';
+  document.getElementById('noteDeleteBtn').style.display = note?'':'none';
+  document.getElementById('notesListMode').style.display='none';
+  document.getElementById('notesEditorMode').style.display='';
+  setTimeout(()=>document.getElementById('noteTitle').focus(),50);
+}
+function closeNoteEditor(){
+  if(isRecording) stopRecording();
+  document.getElementById('notesEditorMode').style.display='none';
+  document.getElementById('notesListMode').style.display='';
+  renderNotesList();
+}
+document.getElementById('addNoteBtn').addEventListener('click', ()=>openNoteEditor(null));
+document.getElementById('noteBackBtn').addEventListener('click', closeNoteEditor);
+document.getElementById('noteDeleteBtn').addEventListener('click', ()=>{
+  const idx = DB.notes.findIndex(n=>n.id===editingNoteId); if(idx>-1) DB.notes.splice(idx,1);
+  saveDB(); closeNoteEditor();
+});
+let noteSaveTimer;
+function persistNote(){
+  const title = document.getElementById('noteTitle').value.trim();
+  const body = document.getElementById('noteBody').innerHTML;
+  const plain = document.getElementById('noteBody').textContent.trim();
+  if(!title && !plain && !body.includes('<img') && !body.includes('<audio')) return;
+  if(!editingNoteId){
+    editingNoteId = 'n'+Date.now()+Math.random().toString(36).slice(2,6);
+    DB.notes.push({id:editingNoteId, title, body, updatedAt:Date.now()});
+    document.getElementById('noteDeleteBtn').style.display='';
+  } else {
+    const n = DB.notes.find(x=>x.id===editingNoteId);
+    if(n){ n.title=title; n.body=body; n.updatedAt=Date.now(); }
+  }
+  saveDB();
+  document.getElementById('noteSaveHint').textContent='Tersimpan otomatis';
+}
+document.getElementById('noteTitle').addEventListener('input', ()=>{
+  document.getElementById('noteSaveHint').textContent='Menyimpan...';
+  clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
+});
+document.getElementById('noteBody').addEventListener('input', ()=>{
+  document.getElementById('noteSaveHint').textContent='Menyimpan...';
+  clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
+});
+document.getElementById('addImageBtn').addEventListener('click', ()=>document.getElementById('imageFileInput').click());
+document.getElementById('imageFileInput').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxW=900; const scale=Math.min(1,maxW/img.width);
+      const canvas=document.createElement('canvas'); canvas.width=img.width*scale; canvas.height=img.height*scale;
+      const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      const dataUrl=canvas.toDataURL('image/jpeg',0.75);
+      document.getElementById('noteBody').innerHTML += `<img src="${dataUrl}">`;
+      persistNote();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value='';
+});
+
+/* voice recording */
+document.getElementById('recordBtn').addEventListener('click', ()=>{
+  if(isRecording) stopRecording(); else startRecording();
+});
+function startRecording(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showToast('Rekam suara tidak didukung di browser ini'); return; }
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e=>audioChunks.push(e.data);
+    mediaRecorder.onstop = ()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob = new Blob(audioChunks, {type:'audio/webm'});
+      const reader = new FileReader();
+      reader.onload = ev=>{
+        document.getElementById('noteBody').innerHTML += `<audio controls src="${ev.target.result}"></audio>`;
+        persistNote();
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    const btn = document.getElementById('recordBtn');
+    btn.classList.add('recording');
+    document.getElementById('recordBtnLabel').textContent = 'Berhenti';
+  }).catch(()=>showToast('Izin mikrofon ditolak'));
+}
+function stopRecording(){
+  if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
+  isRecording = false;
+  const btn = document.getElementById('recordBtn');
+  btn.classList.remove('recording');
+  document.getElementById('recordBtnLabel').textContent = 'Rekam';
+}
+
+/* ================= kamus ================= */
+if(!DB.kamus) DB.kamus=[];
+let activeKamusType = 'vocab';
+document.getElementById('kamusSegmented').addEventListener('click', e=>{
+  const btn = e.target.closest('button'); if(!btn) return;
+  activeKamusType = btn.dataset.type;
+  document.querySelectorAll('#kamusSegmented button').forEach(b=>b.classList.toggle('active', b===btn));
+  renderKamus();
+});
+document.getElementById('kamusSearch').addEventListener('input', renderKamus);
+function kamusTypeLabel(type){ return type==='vocab'?'Vocab':type==='frasa'?'Frasa':type==='conjunction'?'Conj':'Grammar'; }
+function renderKamus(){
+  const q = (document.getElementById('kamusSearch').value||'').toLowerCase();
+  document.getElementById('kamusSegmented').style.display = q? 'none':'flex';
+  let items;
+  if(q){
+    items = DB.kamus.filter(k=>JSON.stringify(k).toLowerCase().includes(q)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  } else {
+    items = DB.kamus.filter(k=>k.type===activeKamusType).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  }
+  const container = document.getElementById('kamusList'); container.innerHTML='';
+  if(items.length===0){
+    container.innerHTML = `<div class="empty"><div class="serif">${q?'Tidak ditemukan':'Belum ada entri'}</div>${q?'Coba kata kunci lain.':'Tambahkan entri baru.'}</div>`;
+  } else if(!q && activeKamusType==='grammar'){
+    items.forEach(k=>{
+      const card=document.createElement('div'); card.className='gram-card';
+      card.innerHTML = `<div class="gram-title">${escapeHtml(k.term)}</div>${k.pola?`<div class="gram-pola mono">${escapeHtml(k.pola)}</div>`:''}<div class="gram-snippet">${escapeHtml(k.penjelasan||'')}</div>`;
+      card.addEventListener('click', ()=>openGramSheet(k));
+      container.appendChild(card);
+    });
+  } else {
+    const grouped = document.createElement('div'); grouped.className='grouped';
+    items.forEach(k=>{
+      const row = document.createElement('div'); row.className='row kamus-row';
+      let tag='', artiText='';
+      if(k.type==='vocab'){ tag=k.wordClass; artiText=k.arti; }
+      else if(k.type==='frasa'){ tag=(k.synonyms&&k.synonyms.length)?`+${k.synonyms.length}`:''; artiText=k.arti; }
+      else if(k.type==='conjunction'){ tag='conj'; artiText=k.kegunaan; }
+      else if(k.type==='grammar'){ tag='grammar'; artiText=k.penjelasan; }
+      row.innerHTML = `
+        <div class="act-main">
+          <div class="kamus-term">${escapeHtml(k.term)} ${q?`<span style="font-size:10px; color:var(--ink-soft); font-weight:600;">· ${kamusTypeLabel(k.type)}</span>`:''}</div>
+          <div class="kamus-arti">${escapeHtml(artiText||'')}</div>
+        </div>
+        ${tag?`<div class="kamus-tag">${escapeHtml(tag)}</div>`:''}
+        <div class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+      `;
+      row.addEventListener('click', ()=>{
+        if(k.type==='vocab') openVocabSheet(k);
+        else if(k.type==='frasa') openFrasaSheet(k);
+        else if(k.type==='conjunction') openConjSheet(k);
+        else openGramSheet(k);
+      });
+      grouped.appendChild(row);
+    });
+    container.appendChild(grouped);
+  }
+  if(!q){
+    const addBtn = document.createElement('button'); addBtn.className='add-row';
+    addBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Tambah entri';
+    addBtn.addEventListener('click', ()=>{
+      if(activeKamusType==='vocab') openVocabSheet(null);
+      else if(activeKamusType==='frasa') openFrasaSheet(null);
+      else if(activeKamusType==='conjunction') openConjSheet(null);
+      else openGramSheet(null);
+    });
+    container.appendChild(addBtn);
+  }
+}
+document.getElementById('addKamusBtn').addEventListener('click', ()=>{
+  if(activeKamusType==='vocab') openVocabSheet(null);
+  else if(activeKamusType==='frasa') openFrasaSheet(null);
+  else if(activeKamusType==='conjunction') openConjSheet(null);
+  else openGramSheet(null);
+});
+
+let editingVocabId = null;
+document.getElementById('vocabClass').addEventListener('change', e=>{ document.getElementById('vocabVerbFields').style.display = e.target.value==='Verb'?'':'none'; });
+function openVocabSheet(k){
+  editingVocabId = k? k.id : null;
+  document.getElementById('vocabSheetTitle').textContent = k?'Edit Vocab':'Tambah Vocab';
+  document.getElementById('vocabTerm').value = k?k.term:'';
+  document.getElementById('vocabClass').value = k?k.wordClass:'Verb';
+  document.getElementById('vocabVerbFields').style.display = (k?k.wordClass:'Verb')==='Verb'?'':'none';
+  document.getElementById('vocabV2').value = k?(k.v2||''):'';
+  document.getElementById('vocabV3').value = k?(k.v3||''):'';
+  document.getElementById('vocabArti').value = k?k.arti:'';
+  document.getElementById('vocabDeleteBtn').style.display = k?'':'none';
+  document.getElementById('vocabOverlay').classList.add('show');
+}
+document.getElementById('vocabCancelBtn').addEventListener('click', ()=>document.getElementById('vocabOverlay').classList.remove('show'));
+document.getElementById('vocabOverlay').addEventListener('click', e=>{ if(e.target.id==='vocabOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('vocabSaveBtn').addEventListener('click', ()=>{
+  const term=document.getElementById('vocabTerm').value.trim(), wordClass=document.getElementById('vocabClass').value, arti=document.getElementById('vocabArti').value.trim();
+  const v2=document.getElementById('vocabV2').value.trim(), v3=document.getElementById('vocabV3').value.trim();
+  if(!term||!arti){ showToast('Isi kata dan arti dulu ya'); return; }
+  if(editingVocabId){ const k=DB.kamus.find(x=>x.id===editingVocabId); Object.assign(k,{term,wordClass,arti,v2,v3}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'vocab', term, wordClass, arti, v2, v3, createdAt:Date.now()});
+  saveDB(); document.getElementById('vocabOverlay').classList.remove('show'); renderKamus();
+});
+document.getElementById('vocabDeleteBtn').addEventListener('click', ()=>{
+  const idx=DB.kamus.findIndex(k=>k.id===editingVocabId); if(idx>-1) DB.kamus.splice(idx,1);
+  saveDB(); document.getElementById('vocabOverlay').classList.remove('show'); renderKamus();
+});
+
+let editingFrasaId = null; let synonymList = [];
+function renderSynList(){
+  const wrap=document.getElementById('synList'); wrap.innerHTML='';
+  synonymList.forEach((val,idx)=>{
+    const row=document.createElement('div'); row.className='syn-item';
+    row.innerHTML = `<input type="text" value="${escapeHtml(val)}" placeholder="frasa lain..."><button class="syn-remove" type="button">&times;</button>`;
+    row.querySelector('input').addEventListener('input', e=>{ synonymList[idx]=e.target.value; });
+    row.querySelector('.syn-remove').addEventListener('click', ()=>{ synonymList.splice(idx,1); renderSynList(); });
+    wrap.appendChild(row);
+  });
+}
+document.getElementById('synAddBtn').addEventListener('click', ()=>{ synonymList.push(''); renderSynList(); });
+function openFrasaSheet(k){
+  editingFrasaId = k? k.id : null;
+  document.getElementById('frasaSheetTitle').textContent = k?'Edit Frasa':'Tambah Frasa';
+  document.getElementById('frasaTerm').value = k?k.term:'';
+  document.getElementById('frasaArti').value = k?k.arti:'';
+  synonymList = k && k.synonyms ? [...k.synonyms] : [];
+  renderSynList();
+  document.getElementById('frasaDeleteBtn').style.display = k?'':'none';
+  document.getElementById('frasaOverlay').classList.add('show');
+}
+document.getElementById('frasaCancelBtn').addEventListener('click', ()=>document.getElementById('frasaOverlay').classList.remove('show'));
+document.getElementById('frasaOverlay').addEventListener('click', e=>{ if(e.target.id==='frasaOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('frasaSaveBtn').addEventListener('click', ()=>{
+  const term=document.getElementById('frasaTerm').value.trim(), arti=document.getElementById('frasaArti').value.trim();
+  const synonyms=synonymList.map(s=>s.trim()).filter(Boolean);
+  if(!term||!arti){ showToast('Isi frasa dan arti dulu ya'); return; }
+  if(editingFrasaId){ const k=DB.kamus.find(x=>x.id===editingFrasaId); Object.assign(k,{term,arti,synonyms}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'frasa', term, arti, synonyms, createdAt:Date.now()});
+  saveDB(); document.getElementById('frasaOverlay').classList.remove('show'); renderKamus();
+});
+document.getElementById('frasaDeleteBtn').addEventListener('click', ()=>{
+  const idx=DB.kamus.findIndex(k=>k.id===editingFrasaId); if(idx>-1) DB.kamus.splice(idx,1);
+  saveDB(); document.getElementById('frasaOverlay').classList.remove('show'); renderKamus();
+});
+
+let editingConjId = null;
+function openConjSheet(k){
+  editingConjId = k? k.id : null;
+  document.getElementById('conjSheetTitle').textContent = k?'Edit Conjunction':'Tambah Conjunction';
+  document.getElementById('conjTerm').value = k?k.term:'';
+  document.getElementById('conjKegunaan').value = k?k.kegunaan:'';
+  document.getElementById('conjArti').value = k?(k.arti||''):'';
+  document.getElementById('conjDeleteBtn').style.display = k?'':'none';
+  document.getElementById('conjOverlay').classList.add('show');
+}
+document.getElementById('conjCancelBtn').addEventListener('click', ()=>document.getElementById('conjOverlay').classList.remove('show'));
+document.getElementById('conjOverlay').addEventListener('click', e=>{ if(e.target.id==='conjOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('conjSaveBtn').addEventListener('click', ()=>{
+  const term=document.getElementById('conjTerm').value.trim(), kegunaan=document.getElementById('conjKegunaan').value.trim(), arti=document.getElementById('conjArti').value.trim();
+  if(!term||!kegunaan){ showToast('Isi kata dan kegunaan dulu ya'); return; }
+  if(editingConjId){ const k=DB.kamus.find(x=>x.id===editingConjId); Object.assign(k,{term,kegunaan,arti}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'conjunction', term, kegunaan, arti, createdAt:Date.now()});
+  saveDB(); document.getElementById('conjOverlay').classList.remove('show'); renderKamus();
+});
+document.getElementById('conjDeleteBtn').addEventListener('click', ()=>{
+  const idx=DB.kamus.findIndex(k=>k.id===editingConjId); if(idx>-1) DB.kamus.splice(idx,1);
+  saveDB(); document.getElementById('conjOverlay').classList.remove('show'); renderKamus();
+});
+
+let editingGramId = null;
+function openGramSheet(k){
+  editingGramId = k? k.id : null;
+  document.getElementById('gramSheetTitle').textContent = k?'Edit Grammar':'Tambah Grammar';
+  document.getElementById('gramTerm').value = k?k.term:'';
+  document.getElementById('gramPola').value = k?(k.pola||''):'';
+  document.getElementById('gramPenjelasan').value = k?(k.penjelasan||''):'';
+  document.getElementById('gramContoh').value = k?(k.contoh||''):'';
+  document.getElementById('gramCatatan').value = k?(k.catatan||''):'';
+  document.getElementById('gramDeleteBtn').style.display = k?'':'none';
+  document.getElementById('gramOverlay').classList.add('show');
+}
+document.getElementById('gramCancelBtn').addEventListener('click', ()=>document.getElementById('gramOverlay').classList.remove('show'));
+document.getElementById('gramOverlay').addEventListener('click', e=>{ if(e.target.id==='gramOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('gramSaveBtn').addEventListener('click', ()=>{
+  const term=document.getElementById('gramTerm').value.trim(), pola=document.getElementById('gramPola').value.trim();
+  const penjelasan=document.getElementById('gramPenjelasan').value.trim(), contoh=document.getElementById('gramContoh').value.trim(), catatan=document.getElementById('gramCatatan').value.trim();
+  if(!term||!penjelasan){ showToast('Isi judul dan penjelasan dulu ya'); return; }
+  if(editingGramId){ const k=DB.kamus.find(x=>x.id===editingGramId); Object.assign(k,{term,pola,penjelasan,contoh,catatan}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'grammar', term, pola, penjelasan, contoh, catatan, createdAt:Date.now()});
+  saveDB(); document.getElementById('gramOverlay').classList.remove('show'); renderKamus();
+});
+document.getElementById('gramDeleteBtn').addEventListener('click', ()=>{
+  const idx=DB.kamus.findIndex(k=>k.id===editingGramId); if(idx>-1) DB.kamus.splice(idx,1);
+  saveDB(); document.getElementById('gramOverlay').classList.remove('show'); renderKamus();
+});
+
+/* ================= progress ================= */
+function renderProgress(){
+  const container = document.getElementById('progressContent');
+  container.innerHTML='';
+  const streak = computeStreak();
+  const streakCard = document.createElement('div'); streakCard.className='stat-card';
+  streakCard.innerHTML = `<div class="stat-num">${streak}</div><div class="stat-label">${streak===1?'hari beruntun':'hari beruntun'}</div>`;
+  container.appendChild(streakCard);
+
+  const sums = weeklySummary();
+  const cats = Object.keys(sums);
+  const label1 = document.createElement('div'); label1.className='section-label'; label1.textContent='7 hari terakhir';
+  container.appendChild(label1);
+  if(cats.length===0){
+    const empty = document.createElement('div'); empty.className='empty';
+    empty.innerHTML = `<div class="serif">Belum ada data</div>Mulai kerjakan kegiatan, progress akan muncul di sini.`;
+    container.appendChild(empty);
+  } else {
+    const maxVal = Math.max(...cats.map(c=>sums[c]));
+    const wrap = document.createElement('div'); wrap.style.background='var(--surface)'; wrap.style.border='1px solid var(--line)'; wrap.style.borderRadius='12px'; wrap.style.padding='16px';
+    cats.sort((a,b)=>sums[b]-sums[a]).forEach(cat=>{
+      const mins = Math.round(sums[cat]/60);
+      const pct = maxVal>0 ? (sums[cat]/maxVal)*100 : 0;
+      const row = document.createElement('div'); row.className='bar-row';
+      row.innerHTML = `<div class="bar-row-top"><span class="cat">${escapeHtml(cat)}</span><span class="val">${mins} menit</span></div><div class="bar-track-h"><div class="bar-fill-h" style="width:${pct}%"></div></div>`;
+      wrap.appendChild(row);
+    });
+    container.appendChild(wrap);
+  }
+
+  const label2 = document.createElement('div'); label2.className='section-label'; label2.textContent='Belum disentuh';
+  container.appendChild(label2);
+  const allCats = allCategoriesInUse();
+  const neglected = allCats.map(c=>({cat:c, days:daysSinceActive(c)})).filter(x=>x.days===null || x.days>=3).sort((a,b)=>(b.days??99)-(a.days??99));
+  if(neglected.length===0){
+    const ok = document.createElement('div'); ok.className='empty';
+    ok.innerHTML = `<div class="serif">Semua terpantau baik</div>Tidak ada kategori yang lama tidak disentuh.`;
+    container.appendChild(ok);
+  } else {
+    const grouped = document.createElement('div'); grouped.className='grouped';
+    neglected.forEach(item=>{
+      const row = document.createElement('div'); row.className='neglect-item';
+      row.innerHTML = `<span>${escapeHtml(item.cat)}</span><span class="neglect-days">${item.days===null?'Belum pernah':item.days+' hari'}</span>`;
+      grouped.appendChild(row);
+    });
+    container.appendChild(grouped);
+  }
+}
+
+/* ================= init ================= */
+renderDayLabel();
+renderActivities();
+document.getElementById('view-today').classList.add('in');
+switchView('today');
+</script>
+</body>
+</html>
