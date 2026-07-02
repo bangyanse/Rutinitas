@@ -430,6 +430,12 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     <div class="field"><label>Nama kegiatan</label><input type="text" id="actName" placeholder="mis. Ngaji, Workout, Catur..."></div>
     <div class="field"><label>Target durasi (menit)</label><input type="number" id="actDuration" inputmode="numeric" placeholder="mis. 30"></div>
     <div class="field" id="actDaysField"><label>Terapkan ke hari</label><div class="chip-row" id="actDaysChips"></div></div>
+    <div class="field" id="actAllDaysField" style="display:none;">
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+        <input type="checkbox" id="actAllDays" style="width:18px;height:18px;accent-color:var(--accent);">
+        <span>Terapkan perubahan ke semua hari</span>
+      </label>
+    </div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="actDeleteBtn" style="display:none;">Hapus</button>
       <button class="btn ghost" id="actCancelBtn">Batal</button>
@@ -787,19 +793,36 @@ function toggleTimer(actId){
   const act = getActivities().find(a=>a.id===actId); if(!act) return;
   let t = timers[actId]; if(!t) t = timers[actId]={running:false, startTs:0, alarmed:false};
   if(t.running){
+    // PAUSE — simpan elapsed, tidak reset
     const delta = (Date.now()-t.startTs)/1000;
     act.elapsedSeconds=(act.elapsedSeconds||0)+delta;
     logSeconds(act.category, delta);
     t.running=false;
-    t.alarmed=false; // reset alarm state
-    stopBeep(); // stop alarm kalau sedang bunyi
+    t.alarmed=false;
+    stopBeep();
     saveDB();
   } else {
-    unlockAudio(); // unlock audio saat user tap play
+    // RESUME / START
+    unlockAudio();
     t.running=true; t.startTs=Date.now();
   }
   renderActivities();
   renderMiniPlayer();
+}
+function stopAndResetTimer(actId){
+  // STOP + RESET — hanya dari mini player
+  const delta = timers[actId]&&timers[actId].running ? (Date.now()-timers[actId].startTs)/1000 : 0;
+  if(delta>0){
+    let act=null;
+    Object.values(DB.days).forEach(list=>{ const f=list.find(a=>a.id===actId); if(f) act=f; });
+    if(act){ logSeconds(act.category, delta); act.elapsedSeconds=0; }
+  } else {
+    let act=null;
+    Object.values(DB.days).forEach(list=>{ const f=list.find(a=>a.id===actId); if(f) act=f; });
+    if(act) act.elapsedSeconds=0;
+  }
+  if(timers[actId]){ timers[actId].running=false; timers[actId].alarmed=false; }
+  stopBeep(); saveDB(); renderActivities(); renderMiniPlayer();
 }
 function renderMiniPlayer(){
   const runningId = Object.keys(timers).find(id=>timers[id].running);
@@ -830,17 +853,7 @@ function getElapsedById(id){
 document.getElementById('miniStopBtn').addEventListener('click', ()=>{
   const runningId = Object.keys(timers).find(id=>timers[id].running);
   if(!runningId) return;
-  // cari act dan stop
-  let act = null;
-  Object.values(DB.days).forEach(list=>{ const found=list.find(a=>a.id===runningId); if(found) act=found; });
-  if(act){
-    const t = timers[runningId];
-    act.elapsedSeconds=(act.elapsedSeconds||0)+(Date.now()-t.startTs)/1000;
-    logSeconds(act.category,(Date.now()-t.startTs)/1000);
-    t.running=false; t.alarmed=false;
-    stopBeep(); saveDB();
-    renderActivities(); renderMiniPlayer();
-  }
+  stopAndResetTimer(runningId);
 });
 
 setInterval(()=>{
@@ -967,9 +980,12 @@ function openActivitySheet(act){
   document.getElementById('actName').value = act?act.name:'';
   document.getElementById('actDuration').value = act?act.duration:'';
   document.getElementById('actDeleteBtn').style.display = act?'':'none';
-  document.getElementById('actDaysField').style.display = act?'none':'';
+  // edit mode: tampilkan opsi "terapkan ke semua hari"
+  document.getElementById('actDaysField').style.display = act?'':'none';
+  document.getElementById('actAllDaysField').style.display = act?'':'none';
   selectedApplyDays = new Set([selectedDayIndex]);
   renderDayChips();
+  document.getElementById('actAllDays').checked = false;
   document.getElementById('activityOverlay').classList.add('show');
 }
 function closeActivitySheet(){ document.getElementById('activityOverlay').classList.remove('show'); }
@@ -982,8 +998,25 @@ document.getElementById('actSaveBtn').addEventListener('click', ()=>{
   if(!name){ showToast('Nama kegiatan belum diisi'); return; }
   if(!category){ showToast('Pilih jenis kegiatan dulu'); return; }
   if(editingActivityId){
-    const act = getActivities().find(a=>a.id===editingActivityId);
-    act.name=name; act.duration=duration; act.category=category;
+    const applyAll = document.getElementById('actAllDays').checked;
+    if(applyAll){
+      // update semua hari yang punya kegiatan dengan nama/jenis sama
+      const origAct = getActivities().find(a=>a.id===editingActivityId);
+      const origName = origAct? origAct.name : '';
+      const origCat = origAct? origAct.category : '';
+      let count = 0;
+      Object.values(DB.days).forEach(list=>{
+        list.forEach(a=>{
+          if(a.name===origName && a.category===origCat){
+            a.name=name; a.duration=duration; a.category=category; count++;
+          }
+        });
+      });
+      showToast(`Diupdate di ${count} kegiatan`);
+    } else {
+      const act = getActivities().find(a=>a.id===editingActivityId);
+      act.name=name; act.duration=duration; act.category=category;
+    }
   } else {
     const days = selectedApplyDays.size>0? Array.from(selectedApplyDays) : [selectedDayIndex];
     days.forEach(dayIdx=>{
