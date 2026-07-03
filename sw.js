@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rutin-v1.5';
+const CACHE_NAME = 'rutin-v1.6';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -53,4 +53,34 @@ self.addEventListener('fetch', e => {
 // Dengarkan pesan dari app untuk force update
 self.addEventListener('message', e => {
   if(e.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// ====== WEB PUSH: alarm timer walau app ketutup ======
+self.addEventListener('push', e => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch(err){ data = { title:'Rutin', body: e.data ? e.data.text() : 'Waktu target tercapai' }; }
+  const title = data.title || 'Rutin';
+  const options = {
+    body: data.body || 'Waktu target kegiatan sudah tercapai!',
+    icon: 'icon-192.png',
+    badge: 'icon-192.png',
+    vibrate: [200,100,200,100,200],
+    tag: data.tag || 'rutin-alarm',
+    renotify: true,
+    requireInteraction: true,
+    data: { url: data.url || './index.html' }
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './index.html';
+  e.waitUntil(
+    self.clients.matchAll({type:'window', includeUncontrolled:true}).then(clientsArr => {
+      const existing = clientsArr.find(c => c.url.includes('index.html'));
+      if(existing) return existing.focus();
+      return self.clients.openWindow(url);
+    })
+  );
 });
