@@ -578,7 +578,7 @@ async function enablePushAlarm(){
     localStorage.setItem('rutin_push_enabled','1');
     showToast('Notifikasi alarm diaktifkan');
     return true;
-  } catch(err){ console.error(err); showToast('Gagal aktifkan notifikasi'); return false; }
+  } catch(err){ console.error(err); showToast('Gagal: '+(err && err.message ? err.message : err)); return false; }
 }
 function isPushEnabled(){ return localStorage.getItem('rutin_push_enabled')==='1' && pushConfigured(); }
 async function schedulePushAlarm(act){
@@ -1081,8 +1081,9 @@ function openActivitySheet(act){
   document.getElementById('actName').value = act?act.name:'';
   document.getElementById('actDuration').value = act?act.duration:'';
   document.getElementById('actDeleteBtn').style.display = act?'':'none';
+  // tambah baru: tampilkan pilihan "terapkan ke hari apa saja"
+  document.getElementById('actDaysField').style.display = act?'none':'';
   // edit mode: tampilkan opsi "terapkan ke semua hari"
-  document.getElementById('actDaysField').style.display = act?'':'none';
   document.getElementById('actAllDaysField').style.display = act?'':'none';
   selectedApplyDays = new Set([selectedDayIndex]);
   renderDayChips();
