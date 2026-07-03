@@ -550,6 +550,7 @@ function getDeviceId(){
   return id;
 }
 function urlBase64ToUint8Array(base64String){
+  base64String = base64String.trim();
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g,'+').replace(/_/g,'/');
   const raw = atob(base64);
@@ -569,7 +570,12 @@ async function enablePushAlarm(){
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if(!sub){
-      sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+      const keyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      if(keyBytes.length!==65 || keyBytes[0]!==4){
+        showToast('Key gak valid: len='+keyBytes.length+' first='+keyBytes[0]);
+        return false;
+      }
+      sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: keyBytes });
     }
     await fetch(PUSH_SERVER_URL+'/subscribe', {
       method:'POST', headers:{'Content-Type':'application/json'},
