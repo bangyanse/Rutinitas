@@ -592,11 +592,13 @@ async function schedulePushAlarm(act){
   const remainingSec = Math.max(0, act.duration*60 - (act.elapsedSeconds||0));
   const targetTimestamp = Date.now() + remainingSec*1000;
   try{
-    await fetch(PUSH_SERVER_URL+'/schedule', {
+    const resp = await fetch(PUSH_SERVER_URL+'/schedule', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ deviceId:getDeviceId(), activityId:act.id, name:act.name, category:act.category, targetTimestamp })
     });
-  } catch(err){ console.error(err); }
+    if(!resp.ok){ const t = await resp.text(); showToast('Gagal jadwal alarm ('+resp.status+'): '+t.slice(0,80)); }
+    else { showToast('Alarm dijadwalkan '+Math.round(remainingSec/60)+' menit lagi'); }
+  } catch(err){ console.error(err); showToast('Gagal hubungi server: '+err.message); }
 }
 async function cancelPushAlarm(actId){
   if(!isPushEnabled()) return;
