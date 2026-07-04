@@ -101,7 +101,7 @@ main{flex:1; padding:14px 16px 100px;}
 
 .add-row{width:100%; padding:14px; border:none; background:none; color:var(--accent); font-weight:600; font-size:14.5px; text-align:left; cursor:pointer; display:flex; align-items:center; gap:8px;}
 .add-row svg{width:18px;height:18px;}
-.add-row-top{padding:10px 0 14px; border-bottom:1px solid var(--line); margin-bottom:4px;}
+.add-row-top{padding:0 0 12px; border-bottom:1px solid var(--line); margin-bottom:4px;}
 .empty{text-align:center; padding:60px 20px; color:var(--ink-soft);}
 .empty .serif{font-size:18px; color:var(--ink); margin-bottom:6px; font-weight:600;}
 
@@ -159,11 +159,11 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .kamus-syn-item{padding:12px 0; border-bottom:1px solid var(--line); font-size:15px; color:var(--accent); font-weight:600;}
 .kamus-syn-item:last-child{border-bottom:none;}
 .kamus-detail-edit{display:flex; align-items:center; gap:6px; background:none; border:1.5px solid var(--line); border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; color:var(--ink-soft); cursor:pointer; margin-top:24px; width:100%; justify-content:center;}
-.kamus-list-item{padding:14px 0; border-bottom:1px solid var(--line); cursor:pointer; display:flex; align-items:center; gap:10px;}
+.kamus-list-item{padding:9px 0; border-bottom:1px solid var(--line); cursor:pointer; display:flex; align-items:center; gap:10px;}
 .kamus-list-item:last-child{border-bottom:none;}
 .kamus-list-item-main{flex:1; min-width:0;}
 .kamus-list-word{font-size:16px; font-weight:700; color:var(--ink);}
-.kamus-list-sub{font-size:12px; font-weight:700; color:var(--ink-soft); margin-top:1px; text-transform:uppercase; letter-spacing:.3px;}
+.kamus-list-sub{font-size:12px; font-weight:700; color:var(--ink-soft); margin-top:1px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .kamus-list-arti{font-size:13px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .kamus-list-tag{font-size:10px; font-weight:800; color:var(--accent); background:var(--accent-soft); padding:3px 8px; border-radius:6px; flex:0 0 auto; text-transform:uppercase; letter-spacing:.3px;}
 
@@ -347,7 +347,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     </div>
     <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="kamusSearch" placeholder="Cari di semua kategori"></div>
     <div class="segmented" id="kamusSegmented">
-      <button class="active" data-type="vocab">Vocab</button>
+      <button class="active" data-type="vocab">Word</button>
       <button data-type="frasa">Frasa</button>
       <button data-type="grammar">Grammar</button>
     </div>
@@ -1322,7 +1322,7 @@ document.getElementById('kamusSegmented').addEventListener('click', e=>{
   renderKamus();
 });
 document.getElementById('kamusSearch').addEventListener('input', renderKamus);
-function kamusTypeLabel(type){ return type==='vocab'?'Vocab':type==='frasa'?'Frasa':type==='conjunction'?'Conjunction':'Grammar'; }
+function kamusTypeLabel(type){ return type==='vocab'?'Word':type==='frasa'?'Frasa':type==='conjunction'?'Conjunction':'Grammar'; }
 
 function openKamusDetail(k){
   document.getElementById('kamusListMode').style.display='none';
@@ -1455,7 +1455,7 @@ function renderKamus(){
       else if(activeKamusType==='conjunction') openConjSheet(null);
       else openGramSheet(null);
     });
-    const topWrap = document.createElement('main'); topWrap.style.paddingBottom='0'; topWrap.appendChild(topAddBtn);
+    const topWrap = document.createElement('main'); topWrap.style.paddingBottom='0'; topWrap.style.paddingTop='6px'; topWrap.appendChild(topAddBtn);
     container.appendChild(topWrap);
   }
   if(items.length===0){
@@ -1468,9 +1468,9 @@ function renderKamus(){
       const item = document.createElement('div'); item.className='kamus-list-item';
       let subLabel='', artiSnippet='';
       if(k.type==='vocab'){ subLabel=(k.wordClass||'')+(k.synonyms&&k.synonyms.length?` · +${k.synonyms.length} serupa`:''); artiSnippet=k.arti||''; }
-      else if(k.type==='frasa'){ subLabel=k.synonyms&&k.synonyms.length?`+${k.synonyms.length} frasa serupa`:'Frasa'; artiSnippet=k.arti||''; }
-      else if(k.type==='conjunction'){ subLabel='Conjunction'; artiSnippet=k.kegunaan||''; }
-      else if(k.type==='grammar'){ subLabel=k.pola||'Grammar'; artiSnippet=k.penjelasan||''; }
+      else if(k.type==='frasa'){ subLabel=k.synonyms&&k.synonyms.length?k.synonyms.join(', '):''; artiSnippet=k.arti||''; }
+      else if(k.type==='conjunction'){ subLabel=''; artiSnippet=k.kegunaan||''; }
+      else if(k.type==='grammar'){ subLabel=k.pola||''; artiSnippet=k.penjelasan||''; }
       item.innerHTML = `
         <div class="kamus-list-item-main">
           <div class="kamus-list-word">${escapeHtml(k.term)}${q?` <span style="font-size:10px;color:var(--ink-soft);font-weight:600;">· ${kamusTypeLabel(k.type)}</span>`:''}</div>
