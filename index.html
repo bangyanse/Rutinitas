@@ -157,8 +157,11 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .kamus-example-card{background:var(--surface-2); border-radius:14px; padding:14px 16px; margin-top:8px;}
 .kamus-example-card p{margin:0; font-size:14.5px; line-height:1.6; color:var(--ink-soft); font-style:italic;}
 .kamus-example-card strong{color:var(--ink); font-style:normal;}
-.kamus-syn-item{padding:12px 0; border-bottom:1px solid var(--line); font-size:15px; color:var(--accent); font-weight:600;}
+.kamus-syn-item{padding:12px 0; border-bottom:1px solid var(--line);}
 .kamus-syn-item:last-child{border-bottom:none;}
+.kamus-syn-term{font-size:15px; color:var(--accent); font-weight:600;}
+.kamus-syn-note{font-size:12.5px; color:var(--ink-soft); margin-top:3px;}
+.kamus-syn-example{font-size:13px; color:var(--ink-soft); font-style:italic; margin-top:5px; line-height:1.5;}
 .kamus-detail-edit{display:flex; align-items:center; gap:6px; background:none; border:1.5px solid var(--line); border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; color:var(--ink-soft); cursor:pointer; margin-top:24px; width:100%; justify-content:center;}
 .kamus-list-item{padding:9px 0; border-bottom:1px solid var(--line); cursor:pointer; display:flex; align-items:center; gap:10px;}
 .kamus-list-item:last-child{border-bottom:none;}
@@ -204,10 +207,13 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .option-list .opt-row:last-child{border-bottom:none;}
 .opt-row.selected{color:var(--accent); font-weight:700;}
 .opt-row svg{width:16px;height:16px;}
-.syn-list{display:flex; flex-direction:column; gap:6px; margin-top:6px;}
-.syn-item{display:flex; gap:6px; align-items:center;}
-.syn-item input{flex:1;}
-.syn-remove{width:30px;height:30px; border:none; background:var(--surface-2); border-radius:8px; color:var(--danger); cursor:pointer; flex:0 0 auto;}
+.syn-list{display:flex; flex-direction:column; gap:10px; margin-top:6px;}
+.syn-item{display:flex; flex-direction:column; gap:6px; padding:10px; background:var(--surface-2); border-radius:14px;}
+.syn-item-row{display:flex; gap:6px; align-items:center;}
+.syn-item-row input{flex:1;}
+.syn-item input,.syn-item textarea{padding:9px 11px; border-radius:10px; border:none; background:var(--surface); color:var(--ink); font-size:13.5px; width:100%;}
+.syn-item textarea{min-height:34px; resize:vertical; font-style:italic;}
+.syn-remove{width:30px;height:30px; border:none; background:var(--surface); border-radius:8px; color:var(--danger); cursor:pointer; flex:0 0 auto;}
 .syn-add{margin-top:6px; padding:9px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; width:100%;}
 
 /* mini player */
@@ -1335,6 +1341,7 @@ document.getElementById('kamusSegmented').addEventListener('click', e=>{
 });
 document.getElementById('kamusSearch').addEventListener('input', renderKamus);
 function kamusTypeLabel(type){ return type==='vocab'?'Word':type==='frasa'?'Frasa':type==='conjunction'?'Conjunction':'Grammar'; }
+function normSyn(s){ return typeof s==='string' ? {term:s, note:'', example:''} : {term:s.term||'', note:s.note||'', example:s.example||''}; }
 
 function openKamusDetail(k){
   document.getElementById('kamusListMode').style.display='none';
@@ -1362,7 +1369,11 @@ function openKamusDetail(k){
     if(k.synonyms && k.synonyms.length){
       extraHtml = `<div class="kamus-section">
         <div class="kamus-section-label">Word serupa</div>
-        ${k.synonyms.map(s=>`<div class="kamus-syn-item">${escapeHtml(s)}</div>`).join('')}
+        ${k.synonyms.map(normSyn).map(s=>`<div class="kamus-syn-item">
+          <div class="kamus-syn-term">${escapeHtml(s.term)}</div>
+          ${s.note?`<div class="kamus-syn-note">${escapeHtml(s.note)}</div>`:''}
+          ${s.example?`<div class="kamus-syn-example">"${escapeHtml(s.example)}"</div>`:''}
+        </div>`).join('')}
       </div>`;
     }
   } else if(k.type==='frasa'){
@@ -1371,7 +1382,11 @@ function openKamusDetail(k){
     if(k.synonyms && k.synonyms.length){
       extraHtml = `<div class="kamus-section">
         <div class="kamus-section-label">Frasa serupa</div>
-        ${k.synonyms.map(s=>`<div class="kamus-syn-item">${escapeHtml(s)}</div>`).join('')}
+        ${k.synonyms.map(normSyn).map(s=>`<div class="kamus-syn-item">
+          <div class="kamus-syn-term">${escapeHtml(s.term)}</div>
+          ${s.note?`<div class="kamus-syn-note">${escapeHtml(s.note)}</div>`:''}
+          ${s.example?`<div class="kamus-syn-example">"${escapeHtml(s.example)}"</div>`:''}
+        </div>`).join('')}
       </div>`;
     }
   } else if(k.type==='conjunction'){
@@ -1479,8 +1494,8 @@ function renderKamus(){
     items.forEach(k=>{
       const item = document.createElement('div'); item.className='kamus-list-item';
       let subLabel='', artiSnippet='';
-      if(k.type==='vocab'){ subLabel=[k.wordClass, (k.synonyms&&k.synonyms.length?k.synonyms.join(', '):'')].filter(Boolean).join(' · '); artiSnippet=k.arti||''; }
-      else if(k.type==='frasa'){ subLabel=k.synonyms&&k.synonyms.length?k.synonyms.join(', '):''; artiSnippet=k.arti||''; }
+      if(k.type==='vocab'){ subLabel=[k.wordClass, (k.synonyms&&k.synonyms.length?k.synonyms.map(normSyn).map(s=>s.term).join(', '):'')].filter(Boolean).join(' · '); artiSnippet=k.arti||''; }
+      else if(k.type==='frasa'){ subLabel=k.synonyms&&k.synonyms.length?k.synonyms.map(normSyn).map(s=>s.term).join(', '):''; artiSnippet=k.arti||''; }
       else if(k.type==='conjunction'){ subLabel=''; artiSnippet=k.kegunaan||''; }
       else if(k.type==='grammar'){ subLabel=k.pola||''; artiSnippet=k.penjelasan||''; }
       item.innerHTML = `
@@ -1511,13 +1526,22 @@ function renderVocabSynList(){
   const wrap=document.getElementById('vocabSynList'); wrap.innerHTML='';
   vocabSynonymList.forEach((val,idx)=>{
     const row=document.createElement('div'); row.className='syn-item';
-    row.innerHTML = `<input type="text" value="${escapeHtml(val)}" placeholder="kata lain..."><button class="syn-remove" type="button">&times;</button>`;
-    row.querySelector('input').addEventListener('input', e=>{ vocabSynonymList[idx]=e.target.value; });
+    row.innerHTML = `
+      <div class="syn-item-row">
+        <input type="text" class="syn-term" value="${escapeHtml(val.term)}" placeholder="kata lain...">
+        <button class="syn-remove" type="button">&times;</button>
+      </div>
+      <input type="text" class="syn-note" value="${escapeHtml(val.note||'')}" placeholder="Keterangan pemakaian (opsional)">
+      <textarea class="syn-example" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(val.example||'')}</textarea>
+    `;
+    row.querySelector('.syn-term').addEventListener('input', e=>{ vocabSynonymList[idx].term=e.target.value; });
+    row.querySelector('.syn-note').addEventListener('input', e=>{ vocabSynonymList[idx].note=e.target.value; });
+    row.querySelector('.syn-example').addEventListener('input', e=>{ vocabSynonymList[idx].example=e.target.value; });
     row.querySelector('.syn-remove').addEventListener('click', ()=>{ vocabSynonymList.splice(idx,1); renderVocabSynList(); });
     wrap.appendChild(row);
   });
 }
-document.getElementById('vocabSynAddBtn').addEventListener('click', ()=>{ vocabSynonymList.push(''); renderVocabSynList(); });
+document.getElementById('vocabSynAddBtn').addEventListener('click', ()=>{ vocabSynonymList.push({term:'',note:'',example:''}); renderVocabSynList(); });
 function openVocabSheet(k){
   editingVocabId = k? k.id : null;
   document.getElementById('vocabSheetTitle').textContent = k?'Edit Word':'Tambah Word';
@@ -1527,7 +1551,7 @@ function openVocabSheet(k){
   document.getElementById('vocabV2').value = k?(k.v2||''):'';
   document.getElementById('vocabV3').value = k?(k.v3||''):'';
   document.getElementById('vocabArti').value = k?k.arti:'';
-  vocabSynonymList = k && k.synonyms ? [...k.synonyms] : [];
+  vocabSynonymList = k && k.synonyms ? k.synonyms.map(normSyn) : [];
   renderVocabSynList();
   document.getElementById('vocabDeleteBtn').style.display = k?'':'none';
   document.getElementById('vocabOverlay').classList.add('show');
@@ -1538,7 +1562,7 @@ document.getElementById('vocabSaveBtn').addEventListener('click', ()=>{
   const term=document.getElementById('vocabTerm').value.trim(), wordClass=document.getElementById('vocabClass').value, arti=document.getElementById('vocabArti').value.trim();
   const v2=document.getElementById('vocabV2').value.trim(), v3=document.getElementById('vocabV3').value.trim();
   if(!term||!arti){ showToast('Isi kata dan arti dulu ya'); return; }
-  const synonyms = vocabSynonymList.map(s=>s.trim()).filter(Boolean);
+  const synonyms = vocabSynonymList.map(s=>({term:s.term.trim(), note:(s.note||'').trim(), example:(s.example||'').trim()})).filter(s=>s.term);
   if(editingVocabId){ const k=DB.kamus.find(x=>x.id===editingVocabId); Object.assign(k,{term,wordClass,arti,v2,v3,synonyms}); }
   else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'vocab', term, wordClass, arti, v2, v3, synonyms, createdAt:Date.now()});
   saveDB(); document.getElementById('vocabOverlay').classList.remove('show'); backToKamusList(); renderKamus();
@@ -1553,19 +1577,28 @@ function renderSynList(){
   const wrap=document.getElementById('synList'); wrap.innerHTML='';
   synonymList.forEach((val,idx)=>{
     const row=document.createElement('div'); row.className='syn-item';
-    row.innerHTML = `<input type="text" value="${escapeHtml(val)}" placeholder="frasa lain..."><button class="syn-remove" type="button">&times;</button>`;
-    row.querySelector('input').addEventListener('input', e=>{ synonymList[idx]=e.target.value; });
+    row.innerHTML = `
+      <div class="syn-item-row">
+        <input type="text" class="syn-term" value="${escapeHtml(val.term)}" placeholder="frasa lain...">
+        <button class="syn-remove" type="button">&times;</button>
+      </div>
+      <input type="text" class="syn-note" value="${escapeHtml(val.note||'')}" placeholder="Keterangan pemakaian (opsional)">
+      <textarea class="syn-example" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(val.example||'')}</textarea>
+    `;
+    row.querySelector('.syn-term').addEventListener('input', e=>{ synonymList[idx].term=e.target.value; });
+    row.querySelector('.syn-note').addEventListener('input', e=>{ synonymList[idx].note=e.target.value; });
+    row.querySelector('.syn-example').addEventListener('input', e=>{ synonymList[idx].example=e.target.value; });
     row.querySelector('.syn-remove').addEventListener('click', ()=>{ synonymList.splice(idx,1); renderSynList(); });
     wrap.appendChild(row);
   });
 }
-document.getElementById('synAddBtn').addEventListener('click', ()=>{ synonymList.push(''); renderSynList(); });
+document.getElementById('synAddBtn').addEventListener('click', ()=>{ synonymList.push({term:'',note:'',example:''}); renderSynList(); });
 function openFrasaSheet(k){
   editingFrasaId = k? k.id : null;
   document.getElementById('frasaSheetTitle').textContent = k?'Edit Frasa':'Tambah Frasa';
   document.getElementById('frasaTerm').value = k?k.term:'';
   document.getElementById('frasaArti').value = k?k.arti:'';
-  synonymList = k && k.synonyms ? [...k.synonyms] : [];
+  synonymList = k && k.synonyms ? k.synonyms.map(normSyn) : [];
   renderSynList();
   document.getElementById('frasaDeleteBtn').style.display = k?'':'none';
   document.getElementById('frasaOverlay').classList.add('show');
@@ -1574,7 +1607,7 @@ document.getElementById('frasaCancelBtn').addEventListener('click', ()=>document
 document.getElementById('frasaOverlay').addEventListener('click', e=>{ if(e.target.id==='frasaOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('frasaSaveBtn').addEventListener('click', ()=>{
   const term=document.getElementById('frasaTerm').value.trim(), arti=document.getElementById('frasaArti').value.trim();
-  const synonyms=synonymList.map(s=>s.trim()).filter(Boolean);
+  const synonyms=synonymList.map(s=>({term:s.term.trim(), note:(s.note||'').trim(), example:(s.example||'').trim()})).filter(s=>s.term);
   if(!term||!arti){ showToast('Isi frasa dan arti dulu ya'); return; }
   if(editingFrasaId){ const k=DB.kamus.find(x=>x.id===editingFrasaId); Object.assign(k,{term,arti,synonyms}); }
   else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'frasa', term, arti, synonyms, createdAt:Date.now()});
