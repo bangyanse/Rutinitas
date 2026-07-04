@@ -974,7 +974,7 @@ setInterval(()=>{
     const over = elapsed>targetSec && targetSec>0;
     if(timeEl){ timeEl.textContent=(over?'+':'')+formatTime(over?elapsed-targetSec:elapsed); timeEl.classList.toggle('over',over); }
     if(barEl){ const pct=targetSec>0?Math.min(100,(elapsed/targetSec)*100):0; barEl.style.width=pct+'%'; barEl.classList.toggle('over',over); }
-    if(over && !t.alarmed){ t.alarmed=true; triggerAlarm(act.name); }
+    if(over && !t.alarmed){ t.alarmed=true; triggerAlarm(act.name); cancelPushAlarm(id); }
   });
   renderMiniPlayer();
 },1000);
