@@ -163,7 +163,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .kamus-list-item:last-child{border-bottom:none;}
 .kamus-list-item-main{flex:1; min-width:0;}
 .kamus-list-word{font-size:16px; font-weight:700; color:var(--ink);}
-.kamus-list-sub{font-size:12px; font-weight:700; color:var(--ink-soft); margin-top:1px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.kamus-list-sub{font-size:12px; font-weight:700; color:var(--ink-soft); margin-top:1px; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .kamus-list-arti{font-size:13px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .kamus-list-tag{font-size:10px; font-weight:800; color:var(--accent); background:var(--accent-soft); padding:3px 8px; border-radius:6px; flex:0 0 auto; text-transform:uppercase; letter-spacing:.3px;}
 
@@ -1467,7 +1467,7 @@ function renderKamus(){
     items.forEach(k=>{
       const item = document.createElement('div'); item.className='kamus-list-item';
       let subLabel='', artiSnippet='';
-      if(k.type==='vocab'){ subLabel=(k.wordClass||'')+(k.synonyms&&k.synonyms.length?` · +${k.synonyms.length} serupa`:''); artiSnippet=k.arti||''; }
+      if(k.type==='vocab'){ subLabel=[k.wordClass, (k.synonyms&&k.synonyms.length?k.synonyms.join(', '):'')].filter(Boolean).join(' · '); artiSnippet=k.arti||''; }
       else if(k.type==='frasa'){ subLabel=k.synonyms&&k.synonyms.length?k.synonyms.join(', '):''; artiSnippet=k.arti||''; }
       else if(k.type==='conjunction'){ subLabel=''; artiSnippet=k.kegunaan||''; }
       else if(k.type==='grammar'){ subLabel=k.pola||''; artiSnippet=k.penjelasan||''; }
