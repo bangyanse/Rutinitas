@@ -471,6 +471,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     </div>
     <div class="field"><label>Kata lain dengan arti sama</label><div class="syn-list" id="vocabSynList"></div><button class="syn-add" id="vocabSynAddBtn" type="button">+ Tambah kata lain</button></div>
     <div class="field"><label>Arti</label><textarea id="vocabArti" placeholder="Artinya..."></textarea></div>
+    <div class="field"><label>Contoh kalimat <span style="font-weight:400;">(opsional)</span></label><textarea id="vocabContoh" placeholder="Contoh penggunaan kata ini..."></textarea></div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="vocabDeleteBtn" style="display:none;">Hapus</button>
       <button class="btn ghost" id="vocabCancelBtn">Batal</button>
@@ -486,6 +487,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     <div class="field"><label>Frasa utama</label><input type="text" id="frasaTerm" placeholder="mis. in spite of"></div>
     <div class="field"><label>Frasa lain dengan makna sama</label><div class="syn-list" id="synList"></div><button class="syn-add" id="synAddBtn">+ Tambah frasa lain</button></div>
     <div class="field"><label>Arti</label><textarea id="frasaArti" placeholder="Artinya..."></textarea></div>
+    <div class="field"><label>Contoh kalimat <span style="font-weight:400;">(opsional)</span></label><textarea id="frasaContoh" placeholder="Contoh penggunaan frasa ini..."></textarea></div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="frasaDeleteBtn" style="display:none;">Hapus</button>
       <button class="btn ghost" id="frasaCancelBtn">Batal</button>
@@ -1551,6 +1553,7 @@ function openVocabSheet(k){
   document.getElementById('vocabV2').value = k?(k.v2||''):'';
   document.getElementById('vocabV3').value = k?(k.v3||''):'';
   document.getElementById('vocabArti').value = k?k.arti:'';
+  document.getElementById('vocabContoh').value = k?(k.contoh||''):'';
   vocabSynonymList = k && k.synonyms ? k.synonyms.map(normSyn) : [];
   renderVocabSynList();
   document.getElementById('vocabDeleteBtn').style.display = k?'':'none';
@@ -1561,10 +1564,11 @@ document.getElementById('vocabOverlay').addEventListener('click', e=>{ if(e.targ
 document.getElementById('vocabSaveBtn').addEventListener('click', ()=>{
   const term=document.getElementById('vocabTerm').value.trim(), wordClass=document.getElementById('vocabClass').value, arti=document.getElementById('vocabArti').value.trim();
   const v2=document.getElementById('vocabV2').value.trim(), v3=document.getElementById('vocabV3').value.trim();
+  const contoh=document.getElementById('vocabContoh').value.trim();
   if(!term||!arti){ showToast('Isi kata dan arti dulu ya'); return; }
   const synonyms = vocabSynonymList.map(s=>({term:s.term.trim(), note:(s.note||'').trim(), example:(s.example||'').trim()})).filter(s=>s.term);
-  if(editingVocabId){ const k=DB.kamus.find(x=>x.id===editingVocabId); Object.assign(k,{term,wordClass,arti,v2,v3,synonyms}); }
-  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'vocab', term, wordClass, arti, v2, v3, synonyms, createdAt:Date.now()});
+  if(editingVocabId){ const k=DB.kamus.find(x=>x.id===editingVocabId); Object.assign(k,{term,wordClass,arti,v2,v3,contoh,synonyms}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'vocab', term, wordClass, arti, v2, v3, contoh, synonyms, createdAt:Date.now()});
   saveDB(); document.getElementById('vocabOverlay').classList.remove('show'); backToKamusList(); renderKamus();
 });
 document.getElementById('vocabDeleteBtn').addEventListener('click', ()=>{
@@ -1598,6 +1602,7 @@ function openFrasaSheet(k){
   document.getElementById('frasaSheetTitle').textContent = k?'Edit Frasa':'Tambah Frasa';
   document.getElementById('frasaTerm').value = k?k.term:'';
   document.getElementById('frasaArti').value = k?k.arti:'';
+  document.getElementById('frasaContoh').value = k?(k.contoh||''):'';
   synonymList = k && k.synonyms ? k.synonyms.map(normSyn) : [];
   renderSynList();
   document.getElementById('frasaDeleteBtn').style.display = k?'':'none';
@@ -1607,10 +1612,11 @@ document.getElementById('frasaCancelBtn').addEventListener('click', ()=>document
 document.getElementById('frasaOverlay').addEventListener('click', e=>{ if(e.target.id==='frasaOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('frasaSaveBtn').addEventListener('click', ()=>{
   const term=document.getElementById('frasaTerm').value.trim(), arti=document.getElementById('frasaArti').value.trim();
+  const contoh=document.getElementById('frasaContoh').value.trim();
   const synonyms=synonymList.map(s=>({term:s.term.trim(), note:(s.note||'').trim(), example:(s.example||'').trim()})).filter(s=>s.term);
   if(!term||!arti){ showToast('Isi frasa dan arti dulu ya'); return; }
-  if(editingFrasaId){ const k=DB.kamus.find(x=>x.id===editingFrasaId); Object.assign(k,{term,arti,synonyms}); }
-  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'frasa', term, arti, synonyms, createdAt:Date.now()});
+  if(editingFrasaId){ const k=DB.kamus.find(x=>x.id===editingFrasaId); Object.assign(k,{term,arti,contoh,synonyms}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'frasa', term, arti, contoh, synonyms, createdAt:Date.now()});
   saveDB(); document.getElementById('frasaOverlay').classList.remove('show'); backToKamusList(); renderKamus();
 });
 document.getElementById('frasaDeleteBtn').addEventListener('click', ()=>{
