@@ -63,7 +63,7 @@ button:active, .row:active, .chip:active, .gram-card:active, .icon-btn:active, .
 .segmented button.active{background:var(--surface); color:var(--ink); box-shadow:0 2px 8px rgba(0,0,0,.1);}
 
 main{flex:1; padding:14px 16px 100px;}
-body.mp-active main{padding-bottom:196px;}
+body.mp-active main{padding-bottom:var(--mp-extra, 210px);}
 .section-label{font-size:12.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin:18px 6px 6px;}
 .section-label:first-child{margin-top:0;}
 
@@ -958,7 +958,13 @@ function renderMiniPlayer(){
   document.getElementById('mpBar').style.width = pct+'%';
   mp.classList.add('show');
   document.body.classList.add('mp-active');
+  // ukur tinggi asli mini player (termasuk jarak dari bawah layar) biar pas persis
+  // di semua device — bukan angka tebak-tebakan, jadi otomatis benar walau ada safe-area beda-beda
+  const rect = mp.getBoundingClientRect();
+  const extra = Math.ceil(window.innerHeight - rect.top) + 16;
+  document.documentElement.style.setProperty('--mp-extra', extra+'px');
 }
+window.addEventListener('resize', ()=>{ if(document.body.classList.contains('mp-active')) renderMiniPlayer(); });
 function getElapsedById(id){
   const t = timers[id]; let base=0;
   Object.values(DB.days).forEach(list=>{ const a=list.find(x=>x.id===id); if(a) base=a.elapsedSeconds||0; });
