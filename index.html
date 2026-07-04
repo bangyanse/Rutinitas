@@ -615,14 +615,14 @@ let audioUnlocked = false;
 
 function unlockAudio(){
   if(audioUnlocked) return;
-  // unlock pakai AudioContext silent — tidak play alarm sama sekali
+  // unlock alarmAudio itu sendiri (bukan AudioContext terpisah) — wajib buat iOS Safari
   try{
-    const ctx = new (window.AudioContext||window.webkitAudioContext)();
-    const buf = ctx.createBuffer(1,1,22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
+    const p = alarmAudio.play();
+    if(p && p.then){
+      p.then(()=>{ alarmAudio.pause(); alarmAudio.currentTime=0; }).catch(()=>{});
+    } else {
+      alarmAudio.pause(); alarmAudio.currentTime=0;
+    }
     audioUnlocked = true;
   }catch(e){}
 }
