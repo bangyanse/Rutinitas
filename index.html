@@ -63,6 +63,7 @@ button:active, .row:active, .chip:active, .gram-card:active, .icon-btn:active, .
 .segmented button.active{background:var(--surface); color:var(--ink); box-shadow:0 2px 8px rgba(0,0,0,.1);}
 
 main{flex:1; padding:14px 16px 100px;}
+body.mp-active main{padding-bottom:196px;}
 .section-label{font-size:12.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin:18px 6px 6px;}
 .section-label:first-child{margin-top:0;}
 
@@ -453,7 +454,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 <!-- vocab -->
 <div class="overlay" id="vocabOverlay">
   <div class="sheet">
-    <h3 id="vocabSheetTitle">Tambah Vocab</h3>
+    <h3 id="vocabSheetTitle">Tambah Word</h3>
     <div class="field"><label>Kata</label><input type="text" id="vocabTerm" placeholder="mis. run"></div>
     <div class="field"><label>Jenis kata</label>
       <select id="vocabClass"><option>Verb</option><option>Noun</option><option>Adjective</option><option>Conjunction</option><option>Adverb</option><option>Preposition</option></select>
@@ -912,6 +913,10 @@ function toggleTimer(actId){
     // RESUME / START
     unlockAudio();
     t.running=true; t.startTs=Date.now();
+    // kalau elapsed sebelumnya sudah lewat target durasi (mis. dipause setelah kelamaan),
+    // jangan langsung bunyi lagi begitu ditekan play — anggap "sudah pernah alarm"
+    const targetSec = act.duration*60;
+    t.alarmed = targetSec>0 && (act.elapsedSeconds||0) >= targetSec;
     schedulePushAlarm(act);
   }
   renderActivities();
@@ -936,11 +941,11 @@ function stopAndResetTimer(actId){
 function renderMiniPlayer(){
   const runningId = Object.keys(timers).find(id=>timers[id].running);
   const mp = document.getElementById('miniPlayer');
-  if(!runningId){ mp.classList.remove('show'); return; }
+  if(!runningId){ mp.classList.remove('show'); document.body.classList.remove('mp-active'); return; }
   // cari activity dari semua hari
   let act = null;
   Object.values(DB.days).forEach(list=>{ const found=list.find(a=>a.id===runningId); if(found) act=found; });
-  if(!act){ mp.classList.remove('show'); return; }
+  if(!act){ mp.classList.remove('show'); document.body.classList.remove('mp-active'); return; }
   const elapsed = getElapsedById(runningId);
   const targetSec = act.duration*60;
   const over = elapsed>targetSec && targetSec>0;
@@ -952,6 +957,7 @@ function renderMiniPlayer(){
   mpTime.className = 'mini-player-time mono'+(over?' over':'');
   document.getElementById('mpBar').style.width = pct+'%';
   mp.classList.add('show');
+  document.body.classList.add('mp-active');
 }
 function getElapsedById(id){
   const t = timers[id]; let base=0;
@@ -1349,7 +1355,7 @@ function openKamusDetail(k){
     artiHtml = k.arti||'';
     if(k.synonyms && k.synonyms.length){
       extraHtml = `<div class="kamus-section">
-        <div class="kamus-section-label">Vocab serupa</div>
+        <div class="kamus-section-label">Word serupa</div>
         ${k.synonyms.map(s=>`<div class="kamus-syn-item">${escapeHtml(s)}</div>`).join('')}
       </div>`;
     }
@@ -1508,7 +1514,7 @@ function renderVocabSynList(){
 document.getElementById('vocabSynAddBtn').addEventListener('click', ()=>{ vocabSynonymList.push(''); renderVocabSynList(); });
 function openVocabSheet(k){
   editingVocabId = k? k.id : null;
-  document.getElementById('vocabSheetTitle').textContent = k?'Edit Vocab':'Tambah Vocab';
+  document.getElementById('vocabSheetTitle').textContent = k?'Edit Word':'Tambah Word';
   document.getElementById('vocabTerm').value = k?k.term:'';
   document.getElementById('vocabClass').value = k?k.wordClass:'Verb';
   document.getElementById('vocabVerbFields').style.display = (k?k.wordClass:'Verb')==='Verb'?'':'none';
