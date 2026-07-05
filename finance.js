@@ -66,15 +66,33 @@ const FIN_ENDPOINT = {
   'rate-add':'/finance/eksa/rates/add', 'rate-delete':'/finance/eksa/rates/delete',
   'unit-add':'/finance/eksa/units/add', 'unit-rename':'/finance/eksa/units/rename', 'unit-delete':'/finance/eksa/units/delete',
 };
+// dilempar kalau server BENERAN nolak requestnya (misal data gak valid) — beda dari
+// gagal fetch karena offline. Kalau ini yang kejadian, jangan diam-diam dimasukin
+// antrian, karena diulang berapa kali juga bakal ditolak lagi sama server.
+class FinHttpError extends Error{
+  constructor(status, message){ super(message); this.status=status; this.isHttpError=true; }
+}
 function finApiRaw(kind, body){
   return fetch(PUSH_SERVER_URL+FIN_ENDPOINT[kind], {
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-  }).then(r=>{ if(!r.ok) throw new Error('http '+r.status); return r.json(); });
+  }).then(async r=>{
+    if(!r.ok){ const msg = await r.text().catch(()=>''); throw new FinHttpError(r.status, msg||('HTTP '+r.status)); }
+    return r.json();
+  });
 }
 function finApiPath(path, body){
   return fetch(PUSH_SERVER_URL+path, {
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-  }).then(r=>{ if(!r.ok) throw new Error('http '+r.status); return r.json(); });
+  }).then(async r=>{
+    if(!r.ok){ const msg = await r.text().catch(()=>''); throw new FinHttpError(r.status, msg||('HTTP '+r.status)); }
+    return r.json();
+  });
+}
+// dipanggil di tiap catch() aksi offline-first: kalau server BENERAN nolak, kasih tau
+// user langsung (jangan diam-diam masuk antrian gagal-terus); kalau bukan, baru diantrikan.
+function finHandleSaveError(e, kind, payload){
+  if(e && e.isHttpError){ showToast('Gagal simpan: '+e.message); return; }
+  finQueuePush(kind, payload);
 }
 
 let finFlushing = false;
@@ -112,7 +130,7 @@ async function finAddTx(business, partial){
   const cache = finGetCacheTx(); cache[business] = cache[business]||[]; cache[business].push(tx); finSetCacheTx(cache);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('tx-add', {vaultId, business, tx}); }
-  catch(e){ finQueuePush('tx-add', {business, tx}); }
+  catch(e){ finHandleSaveError(e, 'tx-add', {business, tx}); }
   return tx;
 }
 async function finUpdateTx(business, tx){
@@ -122,7 +140,7 @@ async function finUpdateTx(business, tx){
   finSetCacheTx(cache);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('tx-update', {vaultId, business, tx}); }
-  catch(e){ finQueuePush('tx-update', {business, tx}); }
+  catch(e){ finHandleSaveError(e, 'tx-update', {business, tx}); }
 }
 async function finDeleteTx(business, txId){
   const cache = finGetCacheTx();
@@ -130,7 +148,7 @@ async function finDeleteTx(business, txId){
   finSetCacheTx(cache);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('tx-delete', {vaultId, business, txId}); }
-  catch(e){ finQueuePush('tx-delete', {business, txId}); }
+  catch(e){ finHandleSaveError(e, 'tx-delete', {business, txId}); }
 }
 
 async function finAddHm(unitId, tgl, hmAwal, hmAkhir){
@@ -138,14 +156,14 @@ async function finAddHm(unitId, tgl, hmAwal, hmAkhir){
   const all = finGetCacheHm(); all[unitId] = all[unitId]||[]; all[unitId].push(entry); all[unitId].sort((a,b)=>a.tgl.localeCompare(b.tgl)); finSetCacheHm(all);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('hm-add', {vaultId, unitId, id:entry.id, tgl, hmAwal:entry.hmAwal, hmAkhir:entry.hmAkhir}); }
-  catch(e){ finQueuePush('hm-add', {unitId, id:entry.id, tgl, hmAwal:entry.hmAwal, hmAkhir:entry.hmAkhir}); }
+  catch(e){ finHandleSaveError(e, 'hm-add', {unitId, id:entry.id, tgl, hmAwal:entry.hmAwal, hmAkhir:entry.hmAkhir}); }
   return entry;
 }
 async function finDeleteHm(unitId, id){
   const all = finGetCacheHm(); all[unitId] = (all[unitId]||[]).filter(r=>r.id!==id); finSetCacheHm(all);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('hm-delete', {vaultId, unitId, id}); }
-  catch(e){ finQueuePush('hm-delete', {unitId, id}); }
+  catch(e){ finHandleSaveError(e, 'hm-delete', {unitId, id}); }
 }
 
 async function finAddRate(unitId, effectiveFrom, rates){
@@ -157,7 +175,7 @@ async function finAddRate(unitId, effectiveFrom, rates){
   all[unitId] = list; finSetCacheRates(all);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('rate-add', {vaultId, unitId, effectiveFrom, rates}); }
-  catch(e){ finQueuePush('rate-add', {unitId, effectiveFrom, rates}); }
+  catch(e){ finHandleSaveError(e, 'rate-add', {unitId, effectiveFrom, rates}); }
 }
 async function finDeleteRate(unitId, effectiveFrom){
   const all = finGetCacheRates(); const list = all[unitId]||[];
@@ -165,7 +183,7 @@ async function finDeleteRate(unitId, effectiveFrom){
   all[unitId] = list.filter(r=>r.effectiveFrom!==effectiveFrom); finSetCacheRates(all);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('rate-delete', {vaultId, unitId, effectiveFrom}); }
-  catch(e){ finQueuePush('rate-delete', {unitId, effectiveFrom}); }
+  catch(e){ finHandleSaveError(e, 'rate-delete', {unitId, effectiveFrom}); }
 }
 
 async function finAddUnit(name){
@@ -173,7 +191,7 @@ async function finAddUnit(name){
   const units = finGetCacheUnits(); units.push(unit); finSetCacheUnits(units);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('unit-add', {vaultId, id:unit.id, name}); }
-  catch(e){ finQueuePush('unit-add', {id:unit.id, name}); }
+  catch(e){ finHandleSaveError(e, 'unit-add', {id:unit.id, name}); }
   return unit;
 }
 async function finDeleteUnit(unitId){
@@ -184,7 +202,15 @@ async function finDeleteUnit(unitId){
   const ratesAll = finGetCacheRates(); delete ratesAll[unitId]; finSetCacheRates(ratesAll);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('unit-delete', {vaultId, unitId}); }
-  catch(e){ finQueuePush('unit-delete', {unitId}); }
+  catch(e){ finHandleSaveError(e, 'unit-delete', {unitId}); }
+}
+async function finRenameUnit(unitId, name){
+  const units = finGetCacheUnits();
+  const u = units.find(x=>x.id===unitId); if(u) u.name = name;
+  finSetCacheUnits(units);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('unit-rename', {vaultId, unitId, name}); }
+  catch(e){ finHandleSaveError(e, 'unit-rename', {unitId, name}); }
 }
 
 /* ---------------- Sinkron penuh dari server ---------------- */
@@ -212,9 +238,9 @@ async function finSyncAll(){
   }catch(e){ /* offline — biarin pakai cache lama */ }
 }
 async function finSeedDefaultRates(unitId){
-  // Rate dasar (sama seperti app HM Eksavator lama) + penyesuaian yang mulai berlaku Mei 2026
-  await finAddRate(unitId, '2000-01', {gajiPerHM:275000, ppnPct:2, tunjanganHarian:50000, gajiOperatorHM:50000, gajiOperatorLebih:60000, batasHM:175, tunjanganOperatorHarian:100000});
-  await finAddRate(unitId, '2026-05', {gajiPerHM:275000, ppnPct:2, tunjanganHarian:50000, gajiOperatorHM:50000, gajiOperatorLebih:60000, batasHM:175, tunjanganOperatorHarian:115000});
+  // Rate dasar (sama seperti app HM Eksavator lama, 3 tier gaji operator) + penyesuaian yang mulai berlaku Mei 2026
+  await finAddRate(unitId, '2000-01', {gajiPerHM:275000, ppnPct:2, tunjanganHarian:50000, gajiOperatorHM:50000, gajiOperatorLebih:60000, batasHM:175, batasHM2:200, gajiOperatorLebih2:70000, tunjanganOperatorHarian:100000});
+  await finAddRate(unitId, '2026-05', {gajiPerHM:275000, ppnPct:2, tunjanganHarian:50000, gajiOperatorHM:50000, gajiOperatorLebih:60000, batasHM:175, batasHM2:200, gajiOperatorLebih2:70000, tunjanganOperatorHarian:115000});
 }
 
 /* ---------------- Rumus Eksa ---------------- */
@@ -230,9 +256,16 @@ function finHitungPendapatan(totalHM, hariKerja, r){
   return gross - ppn + hariKerja*r.tunjanganHarian;
 }
 function finHitungGajiOperator(totalHM, hariKerja, r){
+  const batasHM2 = r.batasHM2 || Infinity; // rate lama yang belum punya tier ke-3 tetap jalan seperti dulu (2 tier)
+  const lebih2 = r.gajiOperatorLebih2 || r.gajiOperatorLebih;
   let gaji;
-  if(totalHM<=r.batasHM) gaji = totalHM*r.gajiOperatorHM;
-  else gaji = r.batasHM*r.gajiOperatorHM + (totalHM-r.batasHM)*r.gajiOperatorLebih;
+  if(totalHM<=r.batasHM){
+    gaji = totalHM*r.gajiOperatorHM;
+  } else if(totalHM<=batasHM2){
+    gaji = r.batasHM*r.gajiOperatorHM + (totalHM-r.batasHM)*r.gajiOperatorLebih;
+  } else {
+    gaji = r.batasHM*r.gajiOperatorHM + (batasHM2-r.batasHM)*r.gajiOperatorLebih + (totalHM-batasHM2)*lebih2;
+  }
   return gaji + hariKerja*r.tunjanganOperatorHarian;
 }
 
@@ -513,6 +546,21 @@ document.getElementById('finTxDeleteBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------------- RENTAL EKSA ---------------- */
+function finOpenUnitActions(u){
+  if(!u) return;
+  const input = prompt('Ganti nama unit ini, atau ketik "hapus" buat menghapusnya:', u.name);
+  if(input===null) return; // batal
+  const trimmed = input.trim();
+  if(!trimmed) return;
+  if(trimmed.toLowerCase()==='hapus'){
+    if(finGetCacheUnits().length<=1){ showToast('Minimal harus ada 1 unit Eksa'); return; }
+    if(!confirm('Yakin hapus unit "'+u.name+'"? Semua data HM & rate unit ini ikut terhapus.')) return;
+    finDeleteUnit(u.id).then(()=>{ finActiveEksaUnit = null; renderFinEksa(); });
+    return;
+  }
+  if(trimmed!==u.name) finRenameUnit(u.id, trimmed).then(()=>renderFinEksa());
+}
+
 function renderFinEksa(){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
   const units = finGetCacheUnits();
@@ -534,11 +582,20 @@ function renderFinEksa(){
   if(finEksaSubTab!=='pengeluaran'){
     const unitBar = document.createElement('div');
     unitBar.style.cssText='display:flex; gap:8px; overflow-x:auto; padding-bottom:12px; margin-bottom:2px;';
-    unitBar.innerHTML = units.map(u=>`<button type="button" data-unit="${u.id}" style="flex:0 0 auto; padding:8px 14px; border-radius:20px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; background:${u.id===finActiveEksaUnit?'var(--ig-gradient)':'var(--surface-2)'}; color:${u.id===finActiveEksaUnit?'#fff':'var(--ink-soft)'};">${escapeHtml(u.name)}</button>`).join('')
+    unitBar.innerHTML = units.map(u=>{
+      const active = u.id===finActiveEksaUnit;
+      return `<button type="button" data-unit="${u.id}" style="flex:0 0 auto; padding:8px 14px; border-radius:20px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; background:${active?'var(--ig-gradient)':'var(--surface-2)'}; color:${active?'#fff':'var(--ink-soft)'};">${escapeHtml(u.name)}${active?' ✎':''}</button>`;
+    }).join('')
       + `<button type="button" id="finUnitAddBtn" style="flex:0 0 auto; padding:8px 14px; border-radius:20px; border:1px dashed var(--line); font-size:12.5px; font-weight:700; cursor:pointer; background:none; color:var(--ink-soft);">+ Unit</button>`;
     wrap.appendChild(unitBar);
     unitBar.querySelectorAll('[data-unit]').forEach(b=>{
-      b.addEventListener('click', ()=>{ finActiveEksaUnit = b.dataset.unit; renderFinEksa(); });
+      b.addEventListener('click', ()=>{
+        if(b.dataset.unit===finActiveEksaUnit){
+          finOpenUnitActions(units.find(u=>u.id===b.dataset.unit));
+        } else {
+          finActiveEksaUnit = b.dataset.unit; renderFinEksa();
+        }
+      });
     });
     document.getElementById('finUnitAddBtn').addEventListener('click', async ()=>{
       const name = prompt('Nama unit baru (mis. Eksa 2):'); if(!name || !name.trim()) return;
@@ -701,33 +758,49 @@ function renderFinEksaRate(body){
   const rates = [...finGetRatesForUnit(unitId)].sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
   body.innerHTML = `<div id="finRateList"></div><button class="btn primary" id="finRateAddBtn" style="width:100%; margin-top:8px;">+ Tambah Rate Baru</button>`;
   const listEl = document.getElementById('finRateList');
-  listEl.innerHTML = rates.length ? rates.map(r=>`
+  listEl.innerHTML = rates.length ? rates.map(r=>{
+    const tier3 = r.batasHM2 ? ` , Rp${(r.gajiOperatorLebih2||0).toLocaleString('id-ID')}/HM (&gt;${r.batasHM2} HM)` : '';
+    return `
     <div class="fin-rate-card" data-from="${r.effectiveFrom}">
       <div class="fin-rate-title"><span>Berlaku sejak ${r.effectiveFrom}</span><span style="color:var(--ink-soft); font-size:12px;">Edit ›</span></div>
       <div class="fin-rate-detail">
         Rp${(r.gajiPerHM||0).toLocaleString('id-ID')}/HM · PPN ${r.ppnPct}% · Tunjangan Rp${(r.tunjanganHarian||0).toLocaleString('id-ID')}/hari<br>
-        Gaji operator Rp${(r.gajiOperatorHM||0).toLocaleString('id-ID')}/HM (≤${r.batasHM} HM), Rp${(r.gajiOperatorLebih||0).toLocaleString('id-ID')}/HM (lebihnya) + Rp${(r.tunjanganOperatorHarian||0).toLocaleString('id-ID')}/hari
+        Gaji operator: Rp${(r.gajiOperatorHM||0).toLocaleString('id-ID')}/HM (≤${r.batasHM} HM), Rp${(r.gajiOperatorLebih||0).toLocaleString('id-ID')}/HM (${r.batasHM}-${r.batasHM2||'∞'} HM)${tier3} + Rp${(r.tunjanganOperatorHarian||0).toLocaleString('id-ID')}/hari
       </div>
     </div>
-  `).join('') : '<div class="fin-empty">Belum ada rate buat unit ini.</div>';
+  `;
+  }).join('') : '<div class="fin-empty">Belum ada rate buat unit ini.</div>';
   listEl.querySelectorAll('[data-from]').forEach(card=>{
     card.addEventListener('click', ()=>openFinRateSheet(rates.find(r=>r.effectiveFrom===card.dataset.from)));
   });
   document.getElementById('finRateAddBtn').addEventListener('click', ()=>openFinRateSheet(null));
 }
 
+function finPopulateRateMonthSelects(selectedMonthKey){
+  const bulanSel = document.getElementById('finRateFromBulan');
+  const tahunSel = document.getElementById('finRateFromTahun');
+  bulanSel.innerHTML = FIN_MONTHS.map((m,i)=>`<option value="${String(i+1).padStart(2,'0')}">${m}</option>`).join('');
+  const thisYear = new Date().getFullYear();
+  const years = []; for(let y=thisYear-2; y<=thisYear+3; y++) years.push(y);
+  tahunSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  const [y, m] = selectedMonthKey.split('-');
+  tahunSel.value = y; bulanSel.value = m;
+}
 function openFinRateSheet(rate){
   finEditingRate = rate ? rate.effectiveFrom : null;
   document.getElementById('finRateSheetTitle').textContent = rate ? 'Edit Rate' : 'Tambah Rate Baru';
   const nextMonth = new Date(finMonthCursor.getFullYear(), finMonthCursor.getMonth()+1, 1);
-  document.getElementById('finRateFrom').value = rate ? rate.effectiveFrom : finMonthKey(nextMonth);
-  document.getElementById('finRateFrom').disabled = !!rate;
+  finPopulateRateMonthSelects(rate ? rate.effectiveFrom : finMonthKey(nextMonth));
+  document.getElementById('finRateFromBulan').disabled = !!rate;
+  document.getElementById('finRateFromTahun').disabled = !!rate;
   document.getElementById('finRateGajiPerHM').value = rate ? rate.gajiPerHM : 275000;
   document.getElementById('finRatePpn').value = rate ? rate.ppnPct : 2;
   document.getElementById('finRateTunjanganHarian').value = rate ? rate.tunjanganHarian : 50000;
   document.getElementById('finRateGajiOpHM').value = rate ? rate.gajiOperatorHM : 50000;
   document.getElementById('finRateGajiOpLebih').value = rate ? rate.gajiOperatorLebih : 60000;
   document.getElementById('finRateBatasHM').value = rate ? rate.batasHM : 175;
+  document.getElementById('finRateBatasHM2').value = rate ? (rate.batasHM2||'') : 200;
+  document.getElementById('finRateGajiOpLebih2').value = rate ? (rate.gajiOperatorLebih2||'') : 70000;
   document.getElementById('finRateTunjanganOp').value = rate ? rate.tunjanganOperatorHarian : 100000;
   document.getElementById('finRateDeleteBtn').style.display = rate ? '' : 'none';
   document.getElementById('finRateOverlay').classList.add('show');
@@ -735,8 +808,7 @@ function openFinRateSheet(rate){
 document.getElementById('finRateCancelBtn').addEventListener('click', ()=>document.getElementById('finRateOverlay').classList.remove('show'));
 document.getElementById('finRateOverlay').addEventListener('click', e=>{ if(e.target.id==='finRateOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('finRateSaveBtn').addEventListener('click', async ()=>{
-  const effectiveFrom = document.getElementById('finRateFrom').value;
-  if(!effectiveFrom){ showToast('Pilih bulan berlaku dulu'); return; }
+  const effectiveFrom = document.getElementById('finRateFromTahun').value+'-'+document.getElementById('finRateFromBulan').value;
   const rates = {
     gajiPerHM: Number(document.getElementById('finRateGajiPerHM').value)||0,
     ppnPct: Number(document.getElementById('finRatePpn').value)||0,
@@ -744,6 +816,8 @@ document.getElementById('finRateSaveBtn').addEventListener('click', async ()=>{
     gajiOperatorHM: Number(document.getElementById('finRateGajiOpHM').value)||0,
     gajiOperatorLebih: Number(document.getElementById('finRateGajiOpLebih').value)||0,
     batasHM: Number(document.getElementById('finRateBatasHM').value)||0,
+    batasHM2: Number(document.getElementById('finRateBatasHM2').value)||0,
+    gajiOperatorLebih2: Number(document.getElementById('finRateGajiOpLebih2').value)||0,
     tunjanganOperatorHarian: Number(document.getElementById('finRateTunjanganOp').value)||0,
   };
   await finAddRate(finActiveEksaUnit, effectiveFrom, rates);

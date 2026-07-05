@@ -617,14 +617,22 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 <div class="overlay" id="finRateOverlay">
   <div class="sheet">
     <h3 id="finRateSheetTitle">Tambah Rate Baru</h3>
-    <div class="field"><label>Berlaku mulai bulan</label><input type="month" id="finRateFrom"></div>
+    <div class="field"><label>Berlaku mulai bulan</label>
+      <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:10px;">
+        <select id="finRateFromBulan"></select>
+        <select id="finRateFromTahun"></select>
+      </div>
+    </div>
     <div class="field"><label>Pendapatan per HM (Rp)</label><input type="number" id="finRateGajiPerHM" placeholder="275000"></div>
     <div class="field"><label>PPN (%)</label><input type="number" id="finRatePpn" placeholder="2"></div>
     <div class="field"><label>Tunjangan per hari kerja (Rp)</label><input type="number" id="finRateTunjanganHarian" placeholder="50000"></div>
-    <div class="field"><label>Gaji operator per HM, sampai batas (Rp)</label><input type="number" id="finRateGajiOpHM" placeholder="50000"></div>
-    <div class="field"><label>Gaji operator per HM, di atas batas (Rp)</label><input type="number" id="finRateGajiOpLebih" placeholder="60000"></div>
-    <div class="field"><label>Batas HM per bulan</label><input type="number" id="finRateBatasHM" placeholder="175"></div>
+    <div class="field"><label>Gaji operator per HM, sampai batas 1 (Rp)</label><input type="number" id="finRateGajiOpHM" placeholder="50000"></div>
+    <div class="field"><label>Batas HM tier 1</label><input type="number" id="finRateBatasHM" placeholder="175"></div>
+    <div class="field"><label>Gaji operator per HM, tier 2 (di atas batas 1) (Rp)</label><input type="number" id="finRateGajiOpLebih" placeholder="60000"></div>
+    <div class="field"><label>Batas HM tier 2 (opsional, kosongkan kalau cuma 2 tier)</label><input type="number" id="finRateBatasHM2" placeholder="200"></div>
+    <div class="field"><label>Gaji operator per HM, tier 3 (di atas batas 2) (Rp)</label><input type="number" id="finRateGajiOpLebih2" placeholder="70000"></div>
     <div class="field"><label>Tunjangan operator per hari kerja (Rp)</label><input type="number" id="finRateTunjanganOp" placeholder="100000"></div>
+    <div class="field-hint">Contoh: HM ≤175 → Rp50.000/HM. HM 176–200 → Rp60.000/HM. HM &gt;200 → Rp70.000/HM.</div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="finRateDeleteBtn" style="display:none;">Hapus</button>
       <button class="btn ghost" id="finRateCancelBtn">Batal</button>
@@ -729,14 +737,16 @@ let audioUnlocked = false;
 
 function unlockAudio(){
   if(audioUnlocked) return;
-  // unlock alarmAudio itu sendiri (bukan AudioContext terpisah) — wajib buat iOS Safari
+  // unlock alarmAudio itu sendiri (bukan AudioContext terpisah) — wajib buat iOS Safari.
+  // Tricknya emang harus manggil .play(), tapi kita bisukan dulu sesaat biar gak
+  // kedengeran alarm "nyala" pas user cuma pencet resume biasa.
   try{
+    const originalVolume = alarmAudio.volume;
+    alarmAudio.volume = 0;
+    const restore = ()=>{ alarmAudio.pause(); alarmAudio.currentTime=0; alarmAudio.volume = originalVolume; };
     const p = alarmAudio.play();
-    if(p && p.then){
-      p.then(()=>{ alarmAudio.pause(); alarmAudio.currentTime=0; }).catch(()=>{});
-    } else {
-      alarmAudio.pause(); alarmAudio.currentTime=0;
-    }
+    if(p && p.then){ p.then(restore).catch(()=>{ alarmAudio.volume = originalVolume; }); }
+    else restore();
     audioUnlocked = true;
   }catch(e){}
 }
