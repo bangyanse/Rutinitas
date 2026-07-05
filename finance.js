@@ -100,6 +100,7 @@ async function finFlushQueue(){
   if(finFlushing) return;
   const vaultId = finGetVaultId(); if(!vaultId) return;
   finFlushing = true;
+  let droppedCount = 0;
   try{
     let q = finGetQueue();
     while(q.length){
@@ -108,9 +109,23 @@ async function finFlushQueue(){
         await finApiRaw(item.kind, {...item.payload, vaultId});
         q.shift();
         finSetQueue(q);
-      }catch(err){ break; } // masih offline / server gak bisa dihubungi, coba lagi nanti
+      }catch(err){
+        if(err && err.isHttpError){
+          // server BENERAN nolak item ini (bukan soal jaringan) — kalau diulang lagi juga
+          // bakal ditolak lagi. Buang item ini aja biar antrian di belakangnya gak ikut macet.
+          console.error('Item antrian gagal permanen, dibuang:', item, err.message);
+          q.shift();
+          finSetQueue(q);
+          droppedCount++;
+          continue;
+        }
+        break; // masih offline / server gak bisa dihubungi, coba lagi nanti
+      }
     }
-  } finally { finFlushing = false; }
+  } finally {
+    finFlushing = false;
+    if(droppedCount>0) showToast(droppedCount+' item gagal permanen & dibuang dari antrian — cek lagi datanya');
+  }
 }
 window.addEventListener('online', finFlushQueue);
 setInterval(finFlushQueue, 20000);
