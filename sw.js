@@ -1,8 +1,9 @@
-const CACHE_NAME = 'rutin-v1.6';
+const CACHE_NAME = 'rutin-v1.7';
 const ASSETS = [
   './index.html',
   './manifest.json',
-  './alarm.mp3'
+  './alarm.mp3',
+  './finance.js'
 ];
 
 // Install: cache semua file
