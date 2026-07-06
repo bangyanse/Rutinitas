@@ -270,18 +270,38 @@ function finHitungPendapatan(totalHM, hariKerja, r){
   const ppn = gross * r.ppnPct/100;
   return gross - ppn + hariKerja*r.tunjanganHarian;
 }
-function finHitungGajiOperator(totalHM, hariKerja, r){
-  const batasHM2 = r.batasHM2 || Infinity; // rate lama yang belum punya tier ke-3 tetap jalan seperti dulu (2 tier)
-  const lebih2 = r.gajiOperatorLebih2 || r.gajiOperatorLebih;
-  let gaji;
-  if(totalHM<=r.batasHM){
-    gaji = totalHM*r.gajiOperatorHM;
-  } else if(totalHM<=batasHM2){
-    gaji = r.batasHM*r.gajiOperatorHM + (totalHM-r.batasHM)*r.gajiOperatorLebih;
-  } else {
-    gaji = r.batasHM*r.gajiOperatorHM + (batasHM2-r.batasHM)*r.gajiOperatorLebih + (totalHM-batasHM2)*lebih2;
+// Mode progresif: tiap `lebarTingkat` HM setelah target, tarif per-HM tambahan naik
+// `kenaikanTingkat` lagi dibanding tingkat sebelumnya — gak ada batas atas.
+function finHitungGajiProgresif(totalHM, R0, target, lebar, kenaikan){
+  if(totalHM<=target) return totalHM*R0;
+  let gaji = target*R0;
+  let sisa = totalHM - target;
+  let tingkat = 1;
+  while(sisa>0){
+    const jumlahTingkatIni = Math.min(sisa, lebar);
+    const tarif = R0 + tingkat*kenaikan;
+    gaji += jumlahTingkatIni*tarif;
+    sisa -= jumlahTingkatIni;
+    tingkat++;
   }
-  return gaji + hariKerja*r.tunjanganOperatorHarian;
+  return gaji;
+}
+function finHitungGajiOperator(totalHM, hariKerja, r){
+  let gajiHM;
+  if(r.progresif && r.lebarTingkat>0){
+    gajiHM = finHitungGajiProgresif(totalHM, r.gajiOperatorHM, r.batasHM, r.lebarTingkat, r.kenaikanTingkat||0);
+  } else {
+    const batasHM2 = r.batasHM2 || Infinity; // rate lama yang belum punya tier ke-3 tetap jalan seperti dulu (2 tier)
+    const lebih2 = r.gajiOperatorLebih2 || r.gajiOperatorLebih;
+    if(totalHM<=r.batasHM){
+      gajiHM = totalHM*r.gajiOperatorHM;
+    } else if(totalHM<=batasHM2){
+      gajiHM = r.batasHM*r.gajiOperatorHM + (totalHM-r.batasHM)*r.gajiOperatorLebih;
+    } else {
+      gajiHM = r.batasHM*r.gajiOperatorHM + (batasHM2-r.batasHM)*r.gajiOperatorLebih + (totalHM-batasHM2)*lebih2;
+    }
+  }
+  return gajiHM + hariKerja*r.tunjanganOperatorHarian;
 }
 
 /* ---------------- Util ---------------- */
@@ -774,13 +794,19 @@ function renderFinEksaRate(body){
   body.innerHTML = `<div id="finRateList"></div><button class="btn primary" id="finRateAddBtn" style="width:100%; margin-top:8px;">+ Tambah Rate Baru</button>`;
   const listEl = document.getElementById('finRateList');
   listEl.innerHTML = rates.length ? rates.map(r=>{
-    const tier3 = r.batasHM2 ? ` , Rp${(r.gajiOperatorLebih2||0).toLocaleString('id-ID')}/HM (&gt;${r.batasHM2} HM)` : '';
+    let gajiDesc;
+    if(r.progresif && r.lebarTingkat>0){
+      gajiDesc = `Rp${(r.gajiOperatorHM||0).toLocaleString('id-ID')}/HM (≤${r.batasHM} HM), lalu naik Rp${(r.kenaikanTingkat||0).toLocaleString('id-ID')}/HM tiap ${r.lebarTingkat} HM (progresif, tanpa batas atas)`;
+    } else {
+      const tier3 = r.batasHM2 ? ` , Rp${(r.gajiOperatorLebih2||0).toLocaleString('id-ID')}/HM (&gt;${r.batasHM2} HM)` : '';
+      gajiDesc = `Rp${(r.gajiOperatorHM||0).toLocaleString('id-ID')}/HM (≤${r.batasHM} HM), Rp${(r.gajiOperatorLebih||0).toLocaleString('id-ID')}/HM (${r.batasHM}-${r.batasHM2||'∞'} HM)${tier3}`;
+    }
     return `
     <div class="fin-rate-card" data-from="${r.effectiveFrom}">
       <div class="fin-rate-title"><span>Berlaku sejak ${r.effectiveFrom}</span><span style="color:var(--ink-soft); font-size:12px;">Edit ›</span></div>
       <div class="fin-rate-detail">
         Rp${(r.gajiPerHM||0).toLocaleString('id-ID')}/HM · PPN ${r.ppnPct}% · Tunjangan Rp${(r.tunjanganHarian||0).toLocaleString('id-ID')}/hari<br>
-        Gaji operator: Rp${(r.gajiOperatorHM||0).toLocaleString('id-ID')}/HM (≤${r.batasHM} HM), Rp${(r.gajiOperatorLebih||0).toLocaleString('id-ID')}/HM (${r.batasHM}-${r.batasHM2||'∞'} HM)${tier3} + Rp${(r.tunjanganOperatorHarian||0).toLocaleString('id-ID')}/hari
+        Gaji operator: ${gajiDesc} + Rp${(r.tunjanganOperatorHarian||0).toLocaleString('id-ID')}/hari
       </div>
     </div>
   `;
@@ -801,6 +827,13 @@ function finPopulateRateMonthSelects(selectedMonthKey){
   const [y, m] = selectedMonthKey.split('-');
   tahunSel.value = y; bulanSel.value = m;
 }
+function finToggleRateModeFields(){
+  const on = document.getElementById('finRateProgresif').checked;
+  document.getElementById('finRateFixedFields').style.display = on ? 'none' : '';
+  document.getElementById('finRateProgresifFields').style.display = on ? '' : 'none';
+}
+document.getElementById('finRateProgresif').addEventListener('change', finToggleRateModeFields);
+
 function openFinRateSheet(rate){
   finEditingRate = rate ? rate.effectiveFrom : null;
   document.getElementById('finRateSheetTitle').textContent = rate ? 'Edit Rate' : 'Tambah Rate Baru';
@@ -812,10 +845,14 @@ function openFinRateSheet(rate){
   document.getElementById('finRatePpn').value = rate ? rate.ppnPct : 2;
   document.getElementById('finRateTunjanganHarian').value = rate ? rate.tunjanganHarian : 50000;
   document.getElementById('finRateGajiOpHM').value = rate ? rate.gajiOperatorHM : 50000;
-  document.getElementById('finRateGajiOpLebih').value = rate ? rate.gajiOperatorLebih : 60000;
   document.getElementById('finRateBatasHM').value = rate ? rate.batasHM : 175;
+  document.getElementById('finRateGajiOpLebih').value = rate ? rate.gajiOperatorLebih : 60000;
   document.getElementById('finRateBatasHM2').value = rate ? (rate.batasHM2||'') : 200;
   document.getElementById('finRateGajiOpLebih2').value = rate ? (rate.gajiOperatorLebih2||'') : 70000;
+  document.getElementById('finRateProgresif').checked = rate ? !!rate.progresif : false;
+  document.getElementById('finRateLebarTingkat').value = rate ? (rate.lebarTingkat||'') : 25;
+  document.getElementById('finRateKenaikanTingkat').value = rate ? (rate.kenaikanTingkat||'') : 10000;
+  finToggleRateModeFields();
   document.getElementById('finRateTunjanganOp').value = rate ? rate.tunjanganOperatorHarian : 100000;
   document.getElementById('finRateDeleteBtn').style.display = rate ? '' : 'none';
   document.getElementById('finRateOverlay').classList.add('show');
@@ -824,17 +861,22 @@ document.getElementById('finRateCancelBtn').addEventListener('click', ()=>docume
 document.getElementById('finRateOverlay').addEventListener('click', e=>{ if(e.target.id==='finRateOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('finRateSaveBtn').addEventListener('click', async ()=>{
   const effectiveFrom = document.getElementById('finRateFromTahun').value+'-'+document.getElementById('finRateFromBulan').value;
+  const progresif = document.getElementById('finRateProgresif').checked;
   const rates = {
     gajiPerHM: Number(document.getElementById('finRateGajiPerHM').value)||0,
     ppnPct: Number(document.getElementById('finRatePpn').value)||0,
     tunjanganHarian: Number(document.getElementById('finRateTunjanganHarian').value)||0,
     gajiOperatorHM: Number(document.getElementById('finRateGajiOpHM').value)||0,
-    gajiOperatorLebih: Number(document.getElementById('finRateGajiOpLebih').value)||0,
     batasHM: Number(document.getElementById('finRateBatasHM').value)||0,
+    gajiOperatorLebih: Number(document.getElementById('finRateGajiOpLebih').value)||0,
     batasHM2: Number(document.getElementById('finRateBatasHM2').value)||0,
     gajiOperatorLebih2: Number(document.getElementById('finRateGajiOpLebih2').value)||0,
+    progresif,
+    lebarTingkat: Number(document.getElementById('finRateLebarTingkat').value)||0,
+    kenaikanTingkat: Number(document.getElementById('finRateKenaikanTingkat').value)||0,
     tunjanganOperatorHarian: Number(document.getElementById('finRateTunjanganOp').value)||0,
   };
+  if(progresif && (!rates.lebarTingkat || !rates.kenaikanTingkat)){ showToast('Isi lebar tingkat & kenaikan tarif dulu'); return; }
   await finAddRate(finActiveEksaUnit, effectiveFrom, rates);
   document.getElementById('finRateOverlay').classList.remove('show');
   showToast('Rate tersimpan');

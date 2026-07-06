@@ -508,11 +508,10 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     <div class="field"><label>Nama kegiatan</label><input type="text" id="actName" placeholder="mis. Ngaji, Workout, Catur..."></div>
     <div class="field"><label>Target durasi (menit)</label><input type="number" id="actDuration" inputmode="numeric" placeholder="mis. 30"></div>
     <div class="field" id="actDaysField"><label>Terapkan ke hari</label><div class="chip-row" id="actDaysChips"></div></div>
-    <div class="field" id="actAllDaysField" style="display:none;">
-      <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-        <input type="checkbox" id="actAllDays" style="width:18px;height:18px;accent-color:var(--accent);">
-        <span>Terapkan perubahan ke semua hari</span>
-      </label>
+    <div class="field" id="actLinkedDaysField" style="display:none;">
+      <label>Hari yang tertaut</label>
+      <div class="chip-row" id="actLinkedDaysChips"></div>
+      <div class="field-hint">Centang buat nambah hari, hapus centang buat lepas tautan (dihapus dari hari itu).</div>
     </div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="actDeleteBtn" style="display:none;">Hapus</button>
@@ -626,13 +625,26 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     <div class="field"><label>Pendapatan per HM (Rp)</label><input type="number" id="finRateGajiPerHM" placeholder="275000"></div>
     <div class="field"><label>PPN (%)</label><input type="number" id="finRatePpn" placeholder="2"></div>
     <div class="field"><label>Tunjangan per hari kerja (Rp)</label><input type="number" id="finRateTunjanganHarian" placeholder="50000"></div>
-    <div class="field"><label>Gaji operator per HM, sampai batas 1 (Rp)</label><input type="number" id="finRateGajiOpHM" placeholder="50000"></div>
-    <div class="field"><label>Batas HM tier 1</label><input type="number" id="finRateBatasHM" placeholder="175"></div>
-    <div class="field"><label>Gaji operator per HM, tier 2 (di atas batas 1) (Rp)</label><input type="number" id="finRateGajiOpLebih" placeholder="60000"></div>
-    <div class="field"><label>Batas HM tier 2 (opsional, kosongkan kalau cuma 2 tier)</label><input type="number" id="finRateBatasHM2" placeholder="200"></div>
-    <div class="field"><label>Gaji operator per HM, tier 3 (di atas batas 2) (Rp)</label><input type="number" id="finRateGajiOpLebih2" placeholder="70000"></div>
+    <div class="field"><label>Gaji operator per HM, sampai batas (Rp)</label><input type="number" id="finRateGajiOpHM" placeholder="50000"></div>
+    <div class="field"><label>Batas HM (target)</label><input type="number" id="finRateBatasHM" placeholder="175"></div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+        <input type="checkbox" id="finRateProgresif" style="width:18px;height:18px;accent-color:var(--accent);">
+        <span>Pakai kenaikan bertingkat progresif (opsional)</span>
+      </label>
+    </div>
+    <div id="finRateFixedFields">
+      <div class="field"><label>Gaji operator per HM, tier 2 (di atas batas) (Rp)</label><input type="number" id="finRateGajiOpLebih" placeholder="60000"></div>
+      <div class="field"><label>Batas HM tier 2 (opsional, kosongkan kalau cuma 2 tier)</label><input type="number" id="finRateBatasHM2" placeholder="200"></div>
+      <div class="field"><label>Gaji operator per HM, tier 3 (di atas batas 2) (Rp)</label><input type="number" id="finRateGajiOpLebih2" placeholder="70000"></div>
+      <div class="field-hint">Contoh: HM ≤175 → Rp50.000/HM. HM 176–200 → Rp60.000/HM. HM &gt;200 → Rp70.000/HM.</div>
+    </div>
+    <div id="finRateProgresifFields" style="display:none;">
+      <div class="field"><label>Lebar tiap tingkat (HM)</label><input type="number" id="finRateLebarTingkat" placeholder="25"></div>
+      <div class="field"><label>Kenaikan tarif tiap tingkat (Rp/HM)</label><input type="number" id="finRateKenaikanTingkat" placeholder="10000"></div>
+      <div class="field-hint">Contoh: tiap lewat 25 HM dari target, tarif HM tambahan naik Rp10.000/HM lagi — jadi tier 175-200 = Rp60.000/HM, 200-225 = Rp70.000/HM, dan seterusnya tanpa batas atas.</div>
+    </div>
     <div class="field"><label>Tunjangan operator per hari kerja (Rp)</label><input type="number" id="finRateTunjanganOp" placeholder="100000"></div>
-    <div class="field-hint">Contoh: HM ≤175 → Rp50.000/HM. HM 176–200 → Rp60.000/HM. HM &gt;200 → Rp70.000/HM.</div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="finRateDeleteBtn" style="display:none;">Hapus</button>
       <button class="btn ghost" id="finRateCancelBtn">Batal</button>
@@ -1217,6 +1229,25 @@ function renderDayChips(){
     wrap.appendChild(chip);
   });
 }
+let originalLinkedDays = new Set(); // snapshot hari yang tertaut waktu sheet dibuka (buat dibandingin pas simpan)
+let selectedLinkedDays = new Set();
+function daysLinkedToGroup(groupId){
+  const found = new Set();
+  DAY_NAMES.forEach((_,idx)=>{
+    if((DB.days[String(idx)]||[]).some(a=>a.groupId===groupId)) found.add(idx);
+  });
+  return found;
+}
+function renderLinkedDayChips(){
+  const wrap = document.getElementById('actLinkedDaysChips'); wrap.innerHTML='';
+  DAY_NAMES.forEach((name,idx)=>{
+    const chip = document.createElement('button');
+    chip.type='button'; chip.className='chip'+(selectedLinkedDays.has(idx)?' active':'');
+    chip.textContent = name.slice(0,3);
+    chip.addEventListener('click', ()=>{ if(selectedLinkedDays.has(idx)) selectedLinkedDays.delete(idx); else selectedLinkedDays.add(idx); renderLinkedDayChips(); });
+    wrap.appendChild(chip);
+  });
+}
 
 function openActivitySheet(act){
   editingActivityId = act? act.id : null;
@@ -1228,11 +1259,17 @@ function openActivitySheet(act){
   document.getElementById('actDeleteBtn').style.display = act?'':'none';
   // tambah baru: tampilkan pilihan "terapkan ke hari apa saja"
   document.getElementById('actDaysField').style.display = act?'none':'';
-  // edit mode: tampilkan opsi "terapkan ke semua hari"
-  document.getElementById('actAllDaysField').style.display = act?'':'none';
+  // edit mode: tampilkan hari yang tertaut sekarang, bisa ditambah/dikurangin
+  document.getElementById('actLinkedDaysField').style.display = act?'':'none';
   selectedApplyDays = new Set([selectedDayIndex]);
   renderDayChips();
-  document.getElementById('actAllDays').checked = false;
+  if(act){
+    originalLinkedDays = daysLinkedToGroup(act.groupId);
+    selectedLinkedDays = new Set(originalLinkedDays);
+  } else {
+    originalLinkedDays = new Set(); selectedLinkedDays = new Set();
+  }
+  renderLinkedDayChips();
   document.getElementById('activityOverlay').classList.add('show');
 }
 function closeActivitySheet(){ document.getElementById('activityOverlay').classList.remove('show'); }
@@ -1245,36 +1282,35 @@ document.getElementById('actSaveBtn').addEventListener('click', ()=>{
   if(!name){ showToast('Nama kegiatan belum diisi'); return; }
   if(!category){ showToast('Pilih jenis kegiatan dulu'); return; }
   if(editingActivityId){
-    const applyAll = document.getElementById('actAllDays').checked;
     const origAct = getActivities().find(a=>a.id===editingActivityId);
     const groupId = origAct? origAct.groupId : editingActivityId;
-    if(applyAll && groupId){
-      let count=0;
-      Object.values(DB.days).forEach(list=>{
-        list.forEach(a=>{ if(a.groupId===groupId){ a.name=name; a.duration=duration; a.category=category; count++; } });
-      });
-      showToast(`Diupdate di ${count} hari`);
-    } else {
-      if(origAct){
-        origAct.name=name; origAct.duration=duration; origAct.category=category;
-        // auto-link: kalau nama baru persis sama dengan kegiatan di hari lain, gabung groupId-nya
-        let matchGroupId = null;
-        Object.values(DB.days).forEach(list=>{
-          list.forEach(a=>{
-            if(a.id!==origAct.id && a.groupId!==origAct.groupId && a.name.trim().toLowerCase()===name.trim().toLowerCase()){
-              matchGroupId = a.groupId;
-            }
-          });
-        });
-        if(matchGroupId){
-          const oldGroupId = origAct.groupId;
-          Object.values(DB.days).forEach(list=>{
-            list.forEach(a=>{ if(a.groupId===oldGroupId) a.groupId = matchGroupId; });
-          });
-          showToast('Kegiatan ditautkan dengan hari lain');
-        }
+    if(selectedLinkedDays.size===0){ showToast('Minimal harus tertaut ke 1 hari'); return; }
+    // hari yang tetap tertaut (ada di lama & baru) -> update datanya
+    DAY_NAMES.forEach((_,idx)=>{
+      if(originalLinkedDays.has(idx) && selectedLinkedDays.has(idx)){
+        const list = ensureDay(String(idx));
+        const a = list.find(x=>x.groupId===groupId);
+        if(a){ a.name=name; a.duration=duration; a.category=category; }
       }
-    }
+    });
+    // hari baru yang ditambahin -> bikin entri baru di hari itu
+    DAY_NAMES.forEach((_,idx)=>{
+      if(selectedLinkedDays.has(idx) && !originalLinkedDays.has(idx)){
+        ensureDay(String(idx)).push({
+          id:'a'+Date.now()+Math.random().toString(36).slice(2,6)+idx,
+          groupId, name, category, duration, elapsedSeconds:0, done:false
+        });
+      }
+    });
+    // hari yang dilepas tautannya -> hapus entrinya dari hari itu
+    DAY_NAMES.forEach((_,idx)=>{
+      if(originalLinkedDays.has(idx) && !selectedLinkedDays.has(idx)){
+        const list = ensureDay(String(idx));
+        const i = list.findIndex(x=>x.groupId===groupId);
+        if(i>-1) list.splice(i,1);
+      }
+    });
+    showToast('Tersimpan');
   } else {
     const days = selectedApplyDays.size>0? Array.from(selectedApplyDays) : [selectedDayIndex];
     const groupId = 'g'+Date.now()+Math.random().toString(36).slice(2,6);
@@ -1288,15 +1324,7 @@ document.getElementById('actSaveBtn').addEventListener('click', ()=>{
   saveDB(); closeActivitySheet(); renderActivities();
 });
 document.getElementById('actDeleteBtn').addEventListener('click', ()=>{
-  const origAct = getActivities().find(a=>a.id===editingActivityId);
-  const groupId = origAct? origAct.groupId : null;
-  if(groupId){
-    // hapus dari semua hari yang linked
-    Object.values(DB.days).forEach(list=>{
-      const idx = list.findIndex(a=>a.groupId===groupId && a.id===editingActivityId);
-      // hanya hapus yang ini saja (bukan semua linked)
-    });
-  }
+  // hapus cuma dari hari yang lagi dibuka ini (bukan semua hari yang tertaut)
   const list = getActivities(); const idx = list.findIndex(a=>a.id===editingActivityId);
   if(idx>-1) list.splice(idx,1);
   delete timers[editingActivityId];
