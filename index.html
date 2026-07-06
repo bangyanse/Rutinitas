@@ -672,6 +672,9 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 <script>
 /* ================= audio via MP3 file ================= */
 const alarmAudio = new Audio('./alarm.mp3');
+// audio hening cuma buat "buka izin" autoplay iOS — sengaja dipisah dari alarmAudio,
+// biar alarm asli gak pernah ke-utak-atik (volume/currentTime/dst) sama sekali.
+const silentUnlockAudio = new Audio('data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA');
 
 /* ================= web push (alarm walau app ketutup) ================= */
 // Isi 2 nilai ini setelah kamu deploy Cloudflare Worker (lihat panduan PUSH_SETUP.md)
@@ -749,18 +752,11 @@ let audioUnlocked = false;
 
 function unlockAudio(){
   if(audioUnlocked) return;
-  // unlock alarmAudio itu sendiri (bukan AudioContext terpisah) — wajib buat iOS Safari.
-  // Tricknya emang harus manggil .play(), tapi kita bisukan dulu sesaat biar gak
-  // kedengeran alarm "nyala" pas user cuma pencet resume biasa.
-  try{
-    const originalVolume = alarmAudio.volume;
-    alarmAudio.volume = 0;
-    const restore = ()=>{ alarmAudio.pause(); alarmAudio.currentTime=0; alarmAudio.volume = originalVolume; };
-    const p = alarmAudio.play();
-    if(p && p.then){ p.then(restore).catch(()=>{ alarmAudio.volume = originalVolume; }); }
-    else restore();
-    audioUnlocked = true;
-  }catch(e){}
+  // "izin" autoplay iOS dibuka pakai audio hening terpisah — alarmAudio (yang sungguhan
+  // dipakai buat bunyi alarm) gak pernah disentuh sama sekali di sini, jadi nggak ada
+  // resiko volume-nya nyangkut kalau tab lagi di-background pas proses unlock ini.
+  try{ silentUnlockAudio.play().catch(()=>{}); }catch(e){}
+  audioUnlocked = true;
 }
 function playBeep(){
   try{
