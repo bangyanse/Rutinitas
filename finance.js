@@ -45,6 +45,14 @@ function finGetCacheRates(){ try{ return JSON.parse(localStorage.getItem('fin_ca
 function finSetCacheRates(data){ localStorage.setItem('fin_cache_rates', JSON.stringify(data)); }
 function finGetHmForUnit(unitId){ return finGetCacheHm()[unitId]||[]; }
 function finGetRatesForUnit(unitId){ return finGetCacheRates()[unitId]||[]; }
+function finGetCacheAccounts(){ try{ return JSON.parse(localStorage.getItem('fin_cache_accounts'))||[]; }catch(e){ return []; } }
+function finSetCacheAccounts(data){ localStorage.setItem('fin_cache_accounts', JSON.stringify(data)); }
+function finGetCacheSaldo(){ try{ return JSON.parse(localStorage.getItem('fin_cache_saldo'))||{}; }catch(e){ return {}; } } // {monthKey:{accountId:amount}}
+function finSetCacheSaldo(data){ localStorage.setItem('fin_cache_saldo', JSON.stringify(data)); }
+function finGetSaldoForMonth(monthKey){ return finGetCacheSaldo()[monthKey]||{}; }
+function finGetCacheCategories(){ try{ return JSON.parse(localStorage.getItem('fin_cache_categories'))||{}; }catch(e){ return {}; } } // {business:[...]}
+function finSetCacheCategories(data){ localStorage.setItem('fin_cache_categories', JSON.stringify(data)); }
+function finGetCategoriesFor(business){ return finGetCacheCategories()[business]||[]; }
 
 /* ---------------- Antrian offline-sync ---------------- */
 function finGetQueue(){ try{ return JSON.parse(localStorage.getItem('fin_queue'))||[]; }catch(e){ return []; } }
@@ -65,6 +73,10 @@ const FIN_ENDPOINT = {
   'hm-add':'/finance/eksa/hm/add', 'hm-delete':'/finance/eksa/hm/delete',
   'rate-add':'/finance/eksa/rates/add', 'rate-delete':'/finance/eksa/rates/delete',
   'unit-add':'/finance/eksa/units/add', 'unit-rename':'/finance/eksa/units/rename', 'unit-delete':'/finance/eksa/units/delete',
+  'unit-set-accounts':'/finance/eksa/units/set-accounts',
+  'acct-add':'/finance/accounts/add', 'acct-rename':'/finance/accounts/rename', 'acct-delete':'/finance/accounts/delete',
+  'acct-saldo-set':'/finance/accounts/saldo/set',
+  'cat-add':'/finance/categories/add', 'cat-delete':'/finance/categories/delete',
 };
 // dilempar kalau server BENERAN nolak requestnya (misal data gak valid) — beda dari
 // gagal fetch karena offline. Kalau ini yang kejadian, jangan diam-diam dimasukin
@@ -141,6 +153,7 @@ async function finAddTx(business, partial){
     category: (partial.category||'').trim(),
     note: (partial.note||'').trim(),
     date: partial.date || new Date().toISOString().slice(0,10),
+    account: partial.account || '',
   };
   const cache = finGetCacheTx(); cache[business] = cache[business]||[]; cache[business].push(tx); finSetCacheTx(cache);
   const vaultId = finGetVaultId();
@@ -227,6 +240,68 @@ async function finRenameUnit(unitId, name){
   try{ await finApiRaw('unit-rename', {vaultId, unitId, name}); }
   catch(e){ finHandleSaveError(e, 'unit-rename', {unitId, name}); }
 }
+async function finSetUnitAccounts(unitId, incomeAccountId, salaryAccountId){
+  const units = finGetCacheUnits();
+  const u = units.find(x=>x.id===unitId); if(u){ u.incomeAccountId=incomeAccountId; u.salaryAccountId=salaryAccountId; }
+  finSetCacheUnits(units);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('unit-set-accounts', {vaultId, unitId, incomeAccountId, salaryAccountId}); }
+  catch(e){ finHandleSaveError(e, 'unit-set-accounts', {unitId, incomeAccountId, salaryAccountId}); }
+}
+
+async function finAddAccount(name){
+  const acc = {id:finNewId('acc'), name};
+  const accounts = finGetCacheAccounts(); accounts.push(acc); finSetCacheAccounts(accounts);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('acct-add', {vaultId, id:acc.id, name}); }
+  catch(e){ finHandleSaveError(e, 'acct-add', {id:acc.id, name}); }
+  return acc;
+}
+async function finRenameAccount(accountId, name){
+  const accounts = finGetCacheAccounts();
+  const a = accounts.find(x=>x.id===accountId); if(a) a.name=name;
+  finSetCacheAccounts(accounts);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('acct-rename', {vaultId, accountId, name}); }
+  catch(e){ finHandleSaveError(e, 'acct-rename', {accountId, name}); }
+}
+async function finDeleteAccount(accountId){
+  finSetCacheAccounts(finGetCacheAccounts().filter(a=>a.id!==accountId));
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('acct-delete', {vaultId, accountId}); }
+  catch(e){ finHandleSaveError(e, 'acct-delete', {accountId}); }
+}
+async function finSetSaldoAwal(monthKey, accountId, amount){
+  const all = finGetCacheSaldo(); all[monthKey] = all[monthKey]||{}; all[monthKey][accountId] = amount; finSetCacheSaldo(all);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('acct-saldo-set', {vaultId, monthKey, accountId, amount}); }
+  catch(e){ finHandleSaveError(e, 'acct-saldo-set', {monthKey, accountId, amount}); }
+}
+async function finEnsureSaldoForMonth(monthKey){
+  if(finGetCacheSaldo()[monthKey]) return; // udah pernah diambil
+  const vaultId = finGetVaultId(); if(!vaultId) return;
+  try{
+    const saldo = await finApiPath('/finance/accounts/saldo/list', {vaultId, monthKey});
+    const all = finGetCacheSaldo(); all[monthKey] = saldo; finSetCacheSaldo(all);
+    renderKeuanganBody();
+  }catch(e){ /* offline, biarin kosong dulu */ }
+}
+
+async function finAddCategory(business, name){
+  const all = finGetCacheCategories(); all[business] = all[business]||[];
+  if(!all[business].includes(name)) all[business].push(name);
+  finSetCacheCategories(all);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('cat-add', {vaultId, business, name}); }
+  catch(e){ finHandleSaveError(e, 'cat-add', {business, name}); }
+}
+async function finDeleteCategory(business, name){
+  const all = finGetCacheCategories(); all[business] = (all[business]||[]).filter(c=>c!==name);
+  finSetCacheCategories(all);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('cat-delete', {vaultId, business, name}); }
+  catch(e){ finHandleSaveError(e, 'cat-delete', {business, name}); }
+}
 
 /* ---------------- Sinkron penuh dari server ---------------- */
 async function finSyncAll(){
@@ -248,6 +323,14 @@ async function finSyncAll(){
     for(const u of units){
       if(!ratesAll[u.id] || ratesAll[u.id].length===0) await finSeedDefaultRates(u.id);
     }
+    const accounts = await finApiPath('/finance/accounts/list', {vaultId});
+    finSetCacheAccounts(accounts);
+    let cats = await finApiPath('/finance/categories/list', {vaultId, business:'pribadi'});
+    if(!cats.length){
+      for(const c of ['Gaji','Makan','Transport','Belanja','Tagihan','Lain-lain']) await finAddCategory('pribadi', c);
+      cats = finGetCategoriesFor('pribadi');
+    }
+    const allCats = finGetCacheCategories(); allCats.pribadi = cats; finSetCacheCategories(allCats);
     if(!finActiveEksaUnit || !units.find(u=>u.id===finActiveEksaUnit)) finActiveEksaUnit = units[0] ? units[0].id : null;
     renderKeuanganBody();
   }catch(e){ /* offline — biarin pakai cache lama */ }
@@ -346,6 +429,33 @@ function finBusinessMonthNet(business, monthKey){
   return {masuk, keluar, net: masuk-keluar};
 }
 
+// Saldo tiap akun bank/e-wallet buat bulan tertentu = saldo awal (alokasi manual) +
+// transaksi apapun (lintas bisnis) yang ditandain ke akun itu + pendapatan/gaji
+// operator Eksa yang ditandain ke akun itu di setting unitnya.
+function finAccountBalanceAll(monthKey){
+  const accounts = finGetCacheAccounts();
+  const saldoAwal = finGetSaldoForMonth(monthKey);
+  const balances = {};
+  accounts.forEach(a=>{ balances[a.id] = saldoAwal[a.id]||0; });
+  const txAll = finGetCacheTx();
+  Object.keys(txAll).forEach(biz=>{
+    finTxInMonth(txAll[biz]||[], monthKey).forEach(t=>{
+      if(t.account && balances.hasOwnProperty(t.account)){
+        balances[t.account] += (t.type==='in'? t.amount : -t.amount);
+      }
+    });
+  });
+  finGetCacheUnits().forEach(u=>{
+    const r = finEksaUnitMonthNet(u.id, monthKey);
+    if(u.incomeAccountId && balances.hasOwnProperty(u.incomeAccountId)) balances[u.incomeAccountId] += r.pendapatan;
+    if(u.salaryAccountId && balances.hasOwnProperty(u.salaryAccountId)) balances[u.salaryAccountId] -= r.gajiOperator;
+  });
+  return balances;
+}
+function finSaldoTotal(monthKey){
+  return Object.values(finAccountBalanceAll(monthKey)).reduce((s,v)=>s+v,0);
+}
+
 /* ---------------- Export data (backup ke file, di luar Cloudflare) ---------------- */
 function finExportAll(){
   const data = {
@@ -354,6 +464,9 @@ function finExportAll(){
     unitEksa: finGetCacheUnits(),
     hmEksa: finGetCacheHm(),
     rateEksa: finGetCacheRates(),
+    akun: finGetCacheAccounts(),
+    saldoAwalBulanan: finGetCacheSaldo(),
+    kategori: finGetCacheCategories(),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -374,16 +487,14 @@ let finActiveEksaUnit = null;
 let finMonthCursor = new Date();
 let finEditingTx = null; // {business, tx} kalau lagi edit, null kalau tambah baru
 let finEditingRate = null; // effectiveFrom kalau lagi edit rate
+let finEditingAccount = null; // account id kalau lagi edit akun
 
 function renderKeuangan(){
   finRenderQueueBadge();
-  const seg = document.getElementById('finBizSegmented');
   if(!finGetVaultId()){
-    seg.style.display='none';
     renderFinVaultSetup();
     return;
   }
-  seg.style.display='';
   finSyncAll();
   renderKeuanganBody();
 }
@@ -410,76 +521,203 @@ function renderKeuanganBody(){
   if(!finGetVaultId()) return;
   if(finActiveBiz==='ringkasan') renderFinRingkasan();
   else if(finActiveBiz==='rental_eksa') renderFinEksa();
+  else if(finActiveBiz==='pribadi') renderFinPribadi();
   else renderFinSimpleBusiness(finActiveBiz);
 }
 
-// segmented tab (biz) — dipasang sekali
-document.querySelectorAll('#finBizSegmented button').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    document.querySelectorAll('#finBizSegmented button').forEach(b=>b.classList.toggle('active', b===btn));
-    finActiveBiz = btn.dataset.biz;
-    renderKeuanganBody();
-  });
-});
+function finGoBiz(biz){
+  finActiveBiz = biz;
+  renderKeuanganBody();
+}
+function finBackLinkHtml(){
+  return `<button type="button" class="fin-back-link" id="finBackToRingkasan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Ringkasan</button>`;
+}
+function finWireBackLink(){
+  const btn = document.getElementById('finBackToRingkasan');
+  if(btn) btn.addEventListener('click', ()=>finGoBiz('ringkasan'));
+}
 
 function finMonthNavHtml(){
-  return `<div class="fin-month-nav">
-    <button type="button" id="finMonthPrev">&lsaquo;</button>
-    <div class="fin-month-label">${finMonthLabel(finMonthCursor)}</div>
-    <button type="button" id="finMonthNext">&rsaquo;</button>
-  </div>`;
+  return `<button type="button" class="day-select-btn" id="finMonthSelectBtn" style="margin-top:0; margin-bottom:14px;">
+    <span>${finMonthLabel(finMonthCursor)}</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+  </button>`;
 }
 function finWireMonthNav(afterChange){
-  document.getElementById('finMonthPrev').addEventListener('click', ()=>{
-    finMonthCursor = new Date(finMonthCursor.getFullYear(), finMonthCursor.getMonth()-1, 1);
-    afterChange();
-  });
-  document.getElementById('finMonthNext').addEventListener('click', ()=>{
-    finMonthCursor = new Date(finMonthCursor.getFullYear(), finMonthCursor.getMonth()+1, 1);
-    afterChange();
+  document.getElementById('finMonthSelectBtn').addEventListener('click', ()=>{
+    const list = document.getElementById('finMonthOptionList'); list.innerHTML='';
+    const cursorKey = finMonthKey(finMonthCursor);
+    const options = [];
+    const base = new Date();
+    for(let i=-12;i<=3;i++) options.push(new Date(base.getFullYear(), base.getMonth()+i, 1));
+    options.forEach(d=>{
+      const key = finMonthKey(d);
+      const row = document.createElement('div');
+      row.className = 'opt-row'+(key===cursorKey?' selected':'');
+      row.innerHTML = `<span>${finMonthLabel(d)}</span>` + (key===cursorKey?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':'');
+      row.addEventListener('click', ()=>{
+        finMonthCursor = d;
+        document.getElementById('finMonthOverlay').classList.remove('show');
+        afterChange();
+      });
+      list.appendChild(row);
+    });
+    document.getElementById('finMonthOverlay').classList.add('show');
   });
 }
+document.getElementById('finMonthOverlay').addEventListener('click', e=>{ if(e.target.id==='finMonthOverlay') e.currentTarget.classList.remove('show'); });
 
-/* ---------------- RINGKASAN ---------------- */
+/* ---------------- RINGKASAN (Dashboard) ---------------- */
 function renderFinRingkasan(){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
   const monthKey = finMonthKey(finMonthCursor);
+  finEnsureSaldoForMonth(monthKey);
   const main = document.createElement('div');
-  main.innerHTML = finMonthNavHtml() + '<div id="finRingkasanRows"></div>';
+  main.innerHTML = finMonthNavHtml();
   wrap.appendChild(main);
   finWireMonthNav(renderFinRingkasan);
 
-  const rowsWrap = document.getElementById('finRingkasanRows');
-  let grandTotal = 0;
+  const saldoTotal = finSaldoTotal(monthKey);
+  const totalCard = document.createElement('div'); totalCard.className='fin-saldo-total-card';
+  totalCard.innerHTML = `<div class="fin-saldo-total-label">Saldo Total</div><div class="fin-saldo-total-val">${finFmt(saldoTotal)}</div>`;
+  main.appendChild(totalCard);
+
+  const rowsWrap = document.createElement('div');
   let html = '';
   FIN_BUSINESSES.forEach(biz=>{
     const r = finBusinessMonthNet(biz, monthKey);
-    grandTotal += r.net;
     const sub = biz==='rental_eksa'
       ? `${r.hariKerja||0} hari kerja · ${r.totalHM||0} HM`
       : `Masuk ${finFmt(r.masuk)} · Keluar ${finFmt(r.keluar)}`;
-    html += `<div class="fin-summary-row" data-goto="${biz}">
+    html += `<div class="fin-dash-row" data-goto="${biz}">
       <div>
-        <div class="fin-summary-biz">${FIN_BIZ_LABEL[biz]}</div>
-        <div class="fin-summary-sub">${sub}</div>
+        <div class="fin-dash-name">${FIN_BIZ_LABEL[biz]}</div>
+        <div class="fin-dash-sub">${sub}</div>
       </div>
-      <div class="fin-summary-val ${r.net>=0?'pos':'neg'}">${finFmt(r.net)}</div>
+      <div style="display:flex; align-items:center;">
+        <div class="fin-dash-val" style="color:${r.net>=0?'var(--positive)':'var(--danger)'}">${finFmt(r.net)}</div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </div>
     </div>`;
   });
   rowsWrap.innerHTML = html;
+  main.appendChild(rowsWrap);
   rowsWrap.querySelectorAll('[data-goto]').forEach(row=>{
-    row.addEventListener('click', ()=>{
-      finActiveBiz = row.dataset.goto;
-      document.querySelectorAll('#finBizSegmented button').forEach(b=>b.classList.toggle('active', b.dataset.biz===finActiveBiz));
-      renderKeuanganBody();
-    });
+    row.addEventListener('click', ()=>finGoBiz(row.dataset.goto));
   });
-  const totalCard = document.createElement('div'); totalCard.className='fin-total-card';
-  totalCard.innerHTML = `<div class="fin-total-label">Total semua bisnis</div><div class="fin-total-val" style="color:${grandTotal>=0?'var(--positive)':'var(--danger)'}">${finFmt(grandTotal)}</div>`;
-  main.appendChild(totalCard);
 }
 
-/* ---------------- BISNIS SIMPEL (Pribadi/Sawit/Walet) ---------------- */
+/* ---------------- PRIBADI (akun + pengeluaran harian + ringkasan bisnis) ---------------- */
+function renderFinPribadi(){
+  const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
+  const monthKey = finMonthKey(finMonthCursor);
+  finEnsureSaldoForMonth(monthKey);
+  const accounts = finGetCacheAccounts();
+  const balances = finAccountBalanceAll(monthKey);
+
+  const main = document.createElement('div');
+  main.innerHTML = finBackLinkHtml() + finMonthNavHtml();
+  wrap.appendChild(main);
+  finWireBackLink();
+  finWireMonthNav(renderFinPribadi);
+
+  // --- Saldo per akun ---
+  const acctSection = document.createElement('div');
+  acctSection.innerHTML = `<div class="fin-section-label">Saldo per Akun</div><div id="finAcctList"></div><button class="btn ghost" id="finAcctAddBtn" style="width:100%; margin-top:8px;">+ Tambah Akun</button>`;
+  main.appendChild(acctSection);
+  const acctListEl = acctSection.querySelector('#finAcctList');
+  acctListEl.innerHTML = accounts.length ? accounts.map(a=>`
+    <div class="fin-acct-row" data-id="${a.id}">
+      <div class="fin-acct-name">${escapeHtml(a.name)}</div>
+      <div class="fin-acct-val" style="color:${(balances[a.id]||0)>=0?'var(--ink)':'var(--danger)'}">${finFmt(balances[a.id]||0)}</div>
+    </div>
+  `).join('') : '<div class="fin-empty">Belum ada akun. Tambahin BRI/BNI/e-wallet dulu.</div>';
+  acctListEl.querySelectorAll('[data-id]').forEach(row=>{
+    row.addEventListener('click', ()=>openFinAcctSheet(accounts.find(a=>a.id===row.dataset.id)));
+  });
+  acctSection.querySelector('#finAcctAddBtn').addEventListener('click', ()=>openFinAcctSheet(null));
+
+  // --- Pengeluaran sehari-hari (kategori custom) ---
+  const cache = finGetCacheTx();
+  const txAll = finTxInMonth(cache.pribadi||[], monthKey).sort((a,b)=>b.date.localeCompare(a.date));
+  const masuk = finSumIn(txAll), keluar = finSumOut(txAll);
+  const expSection = document.createElement('div');
+  expSection.innerHTML = `<div class="fin-section-label">Pengeluaran Sehari-hari</div>
+    <div class="fin-total-card" style="margin-bottom:14px;">
+      <div><div class="fin-total-label">Masuk</div><div class="fin-total-val" style="color:var(--positive); font-size:15px;">${finFmt(masuk)}</div></div>
+      <div><div class="fin-total-label">Keluar</div><div class="fin-total-val" style="color:var(--danger); font-size:15px;">${finFmt(keluar)}</div></div>
+      <div><div class="fin-total-label">Saldo</div><div class="fin-total-val" style="font-size:15px;">${finFmt(masuk-keluar)}</div></div>
+    </div>
+    ${txAll.length ? '<div id="finTxList"></div>' : '<div class="fin-empty">Belum ada transaksi bulan ini.</div>'}`;
+  main.appendChild(expSection);
+  if(txAll.length){
+    const listEl = expSection.querySelector('#finTxList');
+    listEl.innerHTML = txAll.map(t=>`
+      <div class="fin-tx-item" data-id="${t.id}">
+        <div>
+          <div class="fin-tx-cat">${escapeHtml(t.category||'Lainnya')}</div>
+          ${t.note?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
+          <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}</div>
+        </div>
+        <div class="fin-tx-amt ${t.type}">${t.type==='out'?'-':'+'}${finFmt(t.amount)}</div>
+      </div>
+    `).join('');
+    listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
+      row.addEventListener('click', ()=>openFinTxSheet('pribadi', txAll.find(t=>t.id===row.dataset.id)));
+    });
+  }
+
+  // --- Pemasukan & pengeluaran dari bisnis (ringkasan, biar keliatan dari Pribadi juga) ---
+  const bizSection = document.createElement('div');
+  let bizHtml = `<div class="fin-section-label">Dari Bisnis</div>`;
+  ['rental_eksa','sawit','walet'].forEach(biz=>{
+    const r = finBusinessMonthNet(biz, monthKey);
+    bizHtml += `<div class="fin-acct-row"><div class="fin-acct-name">${FIN_BIZ_LABEL[biz]}</div><div class="fin-acct-val" style="color:${r.net>=0?'var(--positive)':'var(--danger)'}">${finFmt(r.net)}</div></div>`;
+  });
+  bizSection.innerHTML = bizHtml;
+  main.appendChild(bizSection);
+
+  const fab = document.createElement('button');
+  fab.className='fin-fab'; fab.innerHTML='+';
+  fab.addEventListener('click', ()=>openFinTxSheet('pribadi', null));
+  wrap.appendChild(fab);
+}
+
+function openFinAcctSheet(acc){
+  finEditingAccount = acc ? acc.id : null;
+  document.getElementById('finAcctSheetTitle').textContent = acc ? 'Edit Akun' : 'Tambah Akun';
+  document.getElementById('finAcctName').value = acc ? acc.name : '';
+  const monthKey = finMonthKey(finMonthCursor);
+  document.getElementById('finAcctSaldoMonthLabel').textContent = finMonthLabel(finMonthCursor);
+  document.getElementById('finAcctSaldoAwal').value = acc ? (finGetSaldoForMonth(monthKey)[acc.id]||0) : 0;
+  document.getElementById('finAcctDeleteBtn').style.display = acc ? '' : 'none';
+  document.getElementById('finAcctOverlay').classList.add('show');
+}
+document.getElementById('finAcctCancelBtn').addEventListener('click', ()=>document.getElementById('finAcctOverlay').classList.remove('show'));
+document.getElementById('finAcctOverlay').addEventListener('click', e=>{ if(e.target.id==='finAcctOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('finAcctSaveBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('finAcctName').value.trim();
+  const saldoAwal = Number(document.getElementById('finAcctSaldoAwal').value)||0;
+  if(!name){ showToast('Isi nama akun dulu'); return; }
+  const monthKey = finMonthKey(finMonthCursor);
+  let accId = finEditingAccount;
+  if(accId){ await finRenameAccount(accId, name); }
+  else{ const acc = await finAddAccount(name); accId = acc.id; }
+  await finSetSaldoAwal(monthKey, accId, saldoAwal);
+  document.getElementById('finAcctOverlay').classList.remove('show');
+  showToast('Tersimpan');
+  renderKeuanganBody();
+});
+document.getElementById('finAcctDeleteBtn').addEventListener('click', async ()=>{
+  if(!finEditingAccount) return;
+  if(!confirm('Hapus akun ini? Transaksi yang udah ditandain ke akun ini gak ikut kehapus, cuma tautannya aja yang hilang.')) return;
+  await finDeleteAccount(finEditingAccount);
+  document.getElementById('finAcctOverlay').classList.remove('show');
+  showToast('Akun dihapus');
+  renderKeuanganBody();
+});
+
+/* ---------------- BISNIS SIMPEL (Sawit/Walet) ---------------- */
 function renderFinSimpleBusiness(biz){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
   const monthKey = finMonthKey(finMonthCursor);
@@ -488,7 +726,7 @@ function renderFinSimpleBusiness(biz){
   const masuk = finSumIn(txAll), keluar = finSumOut(txAll);
 
   const main = document.createElement('div');
-  main.innerHTML = finMonthNavHtml() +
+  main.innerHTML = finBackLinkHtml() + finMonthNavHtml() +
     `<div class="fin-total-card" style="margin-bottom:14px;">
       <div><div class="fin-total-label">Masuk</div><div class="fin-total-val" style="color:var(--positive); font-size:15px;">${finFmt(masuk)}</div></div>
       <div><div class="fin-total-label">Keluar</div><div class="fin-total-val" style="color:var(--danger); font-size:15px;">${finFmt(keluar)}</div></div>
@@ -496,6 +734,7 @@ function renderFinSimpleBusiness(biz){
     </div>` +
     (txAll.length ? `<div id="finTxList"></div>` : `<div class="fin-empty">Belum ada transaksi bulan ini.<br>Tap tombol + buat nambah.</div>`);
   wrap.appendChild(main);
+  finWireBackLink();
   finWireMonthNav(()=>renderFinSimpleBusiness(biz));
 
   if(txAll.length){
@@ -525,6 +764,53 @@ function renderFinSimpleBusiness(biz){
 }
 
 /* ---------------- Sheet transaksi (dipakai Pribadi/Sawit/Walet/Eksa-pengeluaran) ---------------- */
+let finSelectedTxCategory = '';
+function renderFinTxCategoryChips(business, current){
+  const wrap = document.getElementById('finTxCategoryChips'); wrap.innerHTML='';
+  finSelectedTxCategory = current || '';
+  finGetCategoriesFor(business).forEach(cat=>{
+    const chip = document.createElement('button');
+    chip.type='button'; chip.className='chip'+(finSelectedTxCategory===cat?' active':'');
+    chip.textContent = cat;
+    chip.addEventListener('click', ()=>{ finSelectedTxCategory = cat; renderFinTxCategoryChips(business, cat); });
+    wrap.appendChild(chip);
+  });
+}
+function renderFinCatManagedList(){
+  const wrap = document.getElementById('finCatManageList'); wrap.innerHTML='';
+  finGetCategoriesFor('pribadi').forEach(cat=>{
+    const row = document.createElement('div');
+    row.className = 'opt-row';
+    row.innerHTML = `<span>${escapeHtml(cat)}</span><button type="button" data-cat="${escapeHtml(cat)}" style="background:none;border:none;color:var(--ink-soft);font-size:18px;cursor:pointer;padding:0 6px;">&times;</button>`;
+    row.querySelector('button').addEventListener('click', async ()=>{
+      if(finGetCategoriesFor('pribadi').length<=1){ showToast('Minimal harus ada 1 kategori'); return; }
+      if(!confirm('Hapus kategori "'+cat+'"?')) return;
+      await finDeleteCategory('pribadi', cat);
+      renderFinCatManagedList();
+    });
+    wrap.appendChild(row);
+  });
+}
+function openFinCatSheet(){
+  renderFinCatManagedList();
+  document.getElementById('finCatOverlay').classList.add('show');
+}
+document.getElementById('finCatAddBtn').addEventListener('click', async ()=>{
+  const input = document.getElementById('finCatNewInput');
+  const name = input.value.trim(); if(!name) return;
+  await finAddCategory('pribadi', name);
+  input.value='';
+  renderFinCatManagedList();
+});
+document.getElementById('finCatDoneBtn').addEventListener('click', ()=>{
+  document.getElementById('finCatOverlay').classList.remove('show');
+  setTimeout(()=>{
+    renderFinTxCategoryChips('pribadi', finSelectedTxCategory);
+    document.getElementById('finTxOverlay').classList.add('show');
+  }, 200);
+});
+document.getElementById('finCatOverlay').addEventListener('click', e=>{ if(e.target.id==='finCatOverlay') e.currentTarget.classList.remove('show'); });
+
 function openFinTxSheet(business, tx){
   finEditingTx = tx ? {business, tx} : {business, tx:null};
   document.getElementById('finTxSheetTitle').textContent = tx ? 'Edit Transaksi' : (business==='rental_eksa' ? 'Tambah Pengeluaran' : 'Tambah Transaksi');
@@ -537,14 +823,29 @@ function openFinTxSheet(business, tx){
     b.classList.toggle('out', b.dataset.type==='out');
   });
   document.getElementById('finTxAmount').value = tx ? tx.amount : '';
-  document.getElementById('finTxCategory').value = tx ? tx.category : '';
   document.getElementById('finTxDate').value = tx ? tx.date : new Date().toISOString().slice(0,10);
   document.getElementById('finTxNote').value = tx ? tx.note : '';
-  const dl = document.getElementById('finTxCategoryList');
-  dl.innerHTML = (FIN_CATEGORY_PRESET[business]||[]).map(c=>`<option value="${escapeHtml(c)}">`).join('');
+  const isPribadi = business==='pribadi';
+  document.getElementById('finTxCategoryTextField').style.display = isPribadi ? 'none' : '';
+  document.getElementById('finTxCategoryChipField').style.display = isPribadi ? '' : 'none';
+  if(isPribadi){
+    renderFinTxCategoryChips('pribadi', tx?tx.category:'');
+  } else {
+    document.getElementById('finTxCategory').value = tx ? tx.category : '';
+    const dl = document.getElementById('finTxCategoryList');
+    dl.innerHTML = (FIN_CATEGORY_PRESET[business]||[]).map(c=>`<option value="${escapeHtml(c)}">`).join('');
+  }
+  const accSel = document.getElementById('finTxAccount');
+  const accounts = finGetCacheAccounts();
+  accSel.innerHTML = '<option value="">— Gak dicatat ke akun manapun —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+  accSel.value = tx ? (tx.account||'') : '';
   document.getElementById('finTxDeleteBtn').style.display = tx ? '' : 'none';
   document.getElementById('finTxOverlay').classList.add('show');
 }
+document.getElementById('finCatManageBtn').addEventListener('click', ()=>{
+  document.getElementById('finTxOverlay').classList.remove('show');
+  setTimeout(()=>openFinCatSheet(), 200);
+});
 document.querySelectorAll('#finTxTypeToggle button').forEach(b=>{
   b.addEventListener('click', ()=>{
     document.querySelectorAll('#finTxTypeToggle button').forEach(x=>{
@@ -558,15 +859,18 @@ document.getElementById('finTxCancelBtn').addEventListener('click', ()=>document
 document.getElementById('finTxOverlay').addEventListener('click', e=>{ if(e.target.id==='finTxOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('finTxSaveBtn').addEventListener('click', async ()=>{
   const amount = Number(document.getElementById('finTxAmount').value);
-  const category = document.getElementById('finTxCategory').value.trim();
+  const {business, tx} = finEditingTx;
+  const isPribadi = business==='pribadi';
+  const category = isPribadi ? finSelectedTxCategory : document.getElementById('finTxCategory').value.trim();
+  const account = document.getElementById('finTxAccount').value;
   const date = document.getElementById('finTxDate').value;
   const note = document.getElementById('finTxNote').value.trim();
   const type = document.querySelector('#finTxTypeToggle button.active').dataset.type;
   if(!amount || amount<=0){ showToast('Isi jumlahnya dulu ya'); return; }
   if(!date){ showToast('Pilih tanggal dulu ya'); return; }
-  const {business, tx} = finEditingTx;
-  if(tx) await finUpdateTx(business, {...tx, type, amount, category, date, note});
-  else await finAddTx(business, {type, amount, category, date, note});
+  if(isPribadi && !category){ showToast('Pilih kategori dulu ya'); return; }
+  if(tx) await finUpdateTx(business, {...tx, type, amount, category, date, note, account});
+  else await finAddTx(business, {type, amount, category, date, note, account});
   document.getElementById('finTxOverlay').classList.remove('show');
   showToast('Tersimpan');
   renderKeuanganBody();
@@ -600,6 +904,10 @@ function renderFinEksa(){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
   const units = finGetCacheUnits();
   if(!finActiveEksaUnit || !units.find(u=>u.id===finActiveEksaUnit)) finActiveEksaUnit = units[0] ? units[0].id : null;
+
+  const backWrap = document.createElement('div'); backWrap.innerHTML = finBackLinkHtml();
+  wrap.appendChild(backWrap);
+  finWireBackLink();
 
   const sub = document.createElement('div');
   sub.className='segmented'; sub.style.marginBottom='14px';
@@ -651,10 +959,18 @@ function renderFinEksa(){
 
 function renderFinEksaInput(body){
   const unitId = finActiveEksaUnit;
+  const unit = finGetCacheUnits().find(u=>u.id===unitId) || {};
+  const accounts = finGetCacheAccounts();
   const rows = finGetHmForUnit(unitId);
   const lastRow = rows[rows.length-1];
   const today = new Date().toISOString().slice(0,10);
+  const accOptions = '<option value="">— Belum dipilih —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   body.innerHTML = `
+    <div class="fin-section-label">Akun buat gaji &amp; pemasukan (unit ini)</div>
+    <div class="field"><label>Uang sewa masuk ke akun</label><select id="finHmIncomeAcc">${accOptions}</select></div>
+    <div class="field"><label>Gaji operator dibayar dari akun</label><select id="finHmSalaryAcc">${accOptions}</select></div>
+    <div class="field-hint" style="margin-bottom:16px;">Nominalnya tetap otomatis dari hasil hitungan HM &amp; rate — ini cuma nandain duitnya lewat akun yang mana.</div>
+    <div class="fin-section-label">Input HM Harian</div>
     <div class="field"><label>Tanggal</label><input type="date" id="finHmTgl" value="${today}"></div>
     <div class="row2" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <div class="field"><label>HM Awal</label><input type="number" step="0.1" id="finHmAwal" placeholder="isi manual" ${lastRow?'readonly':''} value="${lastRow?lastRow.hmAkhir:''}" style="${lastRow?'color:var(--positive);':''}"></div>
@@ -668,6 +984,16 @@ function renderFinEksaInput(body){
     <div class="field-hint" style="margin-bottom:10px;">Riwayat HM terakhir</div>
     <div id="finHmHistory"></div>
   `;
+  document.getElementById('finHmIncomeAcc').value = unit.incomeAccountId||'';
+  document.getElementById('finHmSalaryAcc').value = unit.salaryAccountId||'';
+  document.getElementById('finHmIncomeAcc').addEventListener('change', e=>{
+    finSetUnitAccounts(unitId, e.target.value, document.getElementById('finHmSalaryAcc').value);
+    showToast('Tersimpan');
+  });
+  document.getElementById('finHmSalaryAcc').addEventListener('change', e=>{
+    finSetUnitAccounts(unitId, document.getElementById('finHmIncomeAcc').value, e.target.value);
+    showToast('Tersimpan');
+  });
   const tglEl = document.getElementById('finHmTgl');
   const awalEl = document.getElementById('finHmAwal');
   const akhirEl = document.getElementById('finHmAkhir');
