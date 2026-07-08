@@ -458,7 +458,6 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
   <div id="view-keuangan" class="view-pane" style="display:none;"><main id="keuanganContent"></main></div>
 
   <!-- KEUANGAN: sheet pilih bulan (mirip pilih hari di Hari Ini) -->
-  <div class="overlay" id="finMonthOverlay"><div class="sheet"><h3>Pilih bulan</h3><div class="option-list" id="finMonthOptionList"></div></div></div>
 
   <nav class="tabs">
     <button class="tab active" data-view="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Hari ini</button>
@@ -721,9 +720,6 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 <script>
 /* ================= audio via MP3 file ================= */
 const alarmAudio = new Audio('./alarm.mp3');
-// audio hening cuma buat "buka izin" autoplay iOS — sengaja dipisah dari alarmAudio,
-// biar alarm asli gak pernah ke-utak-atik (volume/currentTime/dst) sama sekali.
-const silentUnlockAudio = new Audio('data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA');
 
 /* ================= web push (alarm walau app ketutup) ================= */
 // Isi 2 nilai ini setelah kamu deploy Cloudflare Worker (lihat panduan PUSH_SETUP.md)
@@ -801,11 +797,22 @@ let audioUnlocked = false;
 
 function unlockAudio(){
   if(audioUnlocked) return;
-  // "izin" autoplay iOS dibuka pakai audio hening terpisah — alarmAudio (yang sungguhan
-  // dipakai buat bunyi alarm) gak pernah disentuh sama sekali di sini, jadi nggak ada
-  // resiko volume-nya nyangkut kalau tab lagi di-background pas proses unlock ini.
-  try{ silentUnlockAudio.play().catch(()=>{}); }catch(e){}
-  audioUnlocked = true;
+  // Browser (terutama iOS Safari) butuh elemen <audio> yang BENERAN dipakai buat alarm
+  // itu sendiri yang di-"unlock" — unlock elemen lain nggak ngaruh ke elemen ini.
+  // Supaya nggak kedengeran "nyala" pas cuma resume biasa, dibisukan sesaat — TAPI
+  // dibalikin pakai timeout (bukan nunggu promise .play() beres), soalnya promise itu
+  // bisa nggantung lama kalau tab lagi di-background, yang bikin volume nyangkut di 0.
+  try{
+    const originalVolume = alarmAudio.volume;
+    alarmAudio.volume = 0;
+    alarmAudio.play().catch(()=>{});
+    setTimeout(()=>{
+      alarmAudio.pause();
+      alarmAudio.currentTime = 0;
+      alarmAudio.volume = originalVolume;
+    }, 60);
+    audioUnlocked = true;
+  }catch(e){}
 }
 function playBeep(){
   try{
@@ -1176,12 +1183,6 @@ function triggerAlarm(name){
   showToast(`Waktu ${name} selesai`);
   if(navigator.vibrate) navigator.vibrate([200,100,200,100,200]);
   playBeep();
-}
-function playBeep(){
-  try{
-    alarmAudio.currentTime = 0;
-    alarmAudio.play().catch(e=>console.log('alarm error:',e));
-  }catch(e){}
 }
 
 /* activity sheet — jenis custom */

@@ -152,7 +152,7 @@ async function finAddTx(business, partial){
     amount: Number(partial.amount)||0,
     category: (partial.category||'').trim(),
     note: (partial.note||'').trim(),
-    date: partial.date || new Date().toISOString().slice(0,10),
+    date: partial.date || finTodayStr(),
     account: partial.account || '',
   };
   const cache = finGetCacheTx(); cache[business] = cache[business]||[]; cache[business].push(tx); finSetCacheTx(cache);
@@ -389,6 +389,10 @@ function finHitungGajiOperator(totalHM, hariKerja, r){
 
 /* ---------------- Util ---------------- */
 function finFmt(n){ return 'Rp'+Math.round(n||0).toLocaleString('id-ID'); }
+function finTodayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function finFmtN(n){ return parseFloat(parseFloat(n).toFixed(1)); }
 function finMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function finMonthLabel(d){ return FIN_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
@@ -538,34 +542,22 @@ function finWireBackLink(){
 }
 
 function finMonthNavHtml(){
-  return `<button type="button" class="day-select-btn" id="finMonthSelectBtn" style="margin-top:0; margin-bottom:14px;">
-    <span>${finMonthLabel(finMonthCursor)}</span>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-  </button>`;
+  return `<div class="fin-month-nav">
+    <button type="button" id="finMonthPrev">&lsaquo;</button>
+    <div class="fin-month-label">${finMonthLabel(finMonthCursor)}</div>
+    <button type="button" id="finMonthNext">&rsaquo;</button>
+  </div>`;
 }
 function finWireMonthNav(afterChange){
-  document.getElementById('finMonthSelectBtn').addEventListener('click', ()=>{
-    const list = document.getElementById('finMonthOptionList'); list.innerHTML='';
-    const cursorKey = finMonthKey(finMonthCursor);
-    const options = [];
-    const base = new Date();
-    for(let i=-12;i<=3;i++) options.push(new Date(base.getFullYear(), base.getMonth()+i, 1));
-    options.forEach(d=>{
-      const key = finMonthKey(d);
-      const row = document.createElement('div');
-      row.className = 'opt-row'+(key===cursorKey?' selected':'');
-      row.innerHTML = `<span>${finMonthLabel(d)}</span>` + (key===cursorKey?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':'');
-      row.addEventListener('click', ()=>{
-        finMonthCursor = d;
-        document.getElementById('finMonthOverlay').classList.remove('show');
-        afterChange();
-      });
-      list.appendChild(row);
-    });
-    document.getElementById('finMonthOverlay').classList.add('show');
+  document.getElementById('finMonthPrev').addEventListener('click', ()=>{
+    finMonthCursor = new Date(finMonthCursor.getFullYear(), finMonthCursor.getMonth()-1, 1);
+    afterChange();
+  });
+  document.getElementById('finMonthNext').addEventListener('click', ()=>{
+    finMonthCursor = new Date(finMonthCursor.getFullYear(), finMonthCursor.getMonth()+1, 1);
+    afterChange();
   });
 }
-document.getElementById('finMonthOverlay').addEventListener('click', e=>{ if(e.target.id==='finMonthOverlay') e.currentTarget.classList.remove('show'); });
 
 /* ---------------- RINGKASAN (Dashboard) ---------------- */
 function renderFinRingkasan(){
@@ -823,7 +815,7 @@ function openFinTxSheet(business, tx){
     b.classList.toggle('out', b.dataset.type==='out');
   });
   document.getElementById('finTxAmount').value = tx ? tx.amount : '';
-  document.getElementById('finTxDate').value = tx ? tx.date : new Date().toISOString().slice(0,10);
+  document.getElementById('finTxDate').value = tx ? tx.date : finTodayStr();
   document.getElementById('finTxNote').value = tx ? tx.note : '';
   const isPribadi = business==='pribadi';
   document.getElementById('finTxCategoryTextField').style.display = isPribadi ? 'none' : '';
@@ -963,7 +955,7 @@ function renderFinEksaInput(body){
   const accounts = finGetCacheAccounts();
   const rows = finGetHmForUnit(unitId);
   const lastRow = rows[rows.length-1];
-  const today = new Date().toISOString().slice(0,10);
+  const today = finTodayStr();
   const accOptions = '<option value="">— Belum dipilih —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   body.innerHTML = `
     <div class="fin-section-label">Akun buat gaji &amp; pemasukan (unit ini)</div>
@@ -1014,6 +1006,10 @@ function renderFinEksaInput(body){
     if(isNaN(hmAwal)){ showToast('HM Awal kosong'); return; }
     if(isNaN(hmAkhir) || hmAkhir<=hmAwal){ showToast('HM Akhir harus lebih besar dari HM Awal'); return; }
     await finAddHm(unitId, tgl, hmAwal, hmAkhir);
+    // biar bulan yang lagi dilihat (dipakai bareng di Laporan/Pengeluaran/Ringkasan) otomatis
+    // ikut pindah ke bulan HM yang baru disimpan — biar begitu buka Laporan, langsung ketemu
+    const [ty, tm] = tgl.split('-').map(Number);
+    finMonthCursor = new Date(ty, tm-1, 1);
     showToast('Tersimpan');
     renderFinEksa();
   });
