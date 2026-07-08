@@ -1028,10 +1028,6 @@ function renderFinEksaInput(body){
     if(isNaN(hmAwal)){ showToast('HM Awal kosong'); return; }
     if(isNaN(hmAkhir) || hmAkhir<=hmAwal){ showToast('HM Akhir harus lebih besar dari HM Awal'); return; }
     await finAddHm(unitId, tgl, hmAwal, hmAkhir);
-    // biar bulan yang lagi dilihat (dipakai bareng di Laporan/Pengeluaran/Ringkasan) otomatis
-    // ikut pindah ke bulan HM yang baru disimpan — biar begitu buka Laporan, langsung ketemu
-    const [ty, tm] = tgl.split('-').map(Number);
-    finMonthCursor = new Date(ty, tm-1, 1);
     showToast('Tersimpan');
     renderFinEksa();
   });
