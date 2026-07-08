@@ -691,8 +691,8 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
   <div class="sheet">
     <h3 id="finAcctSheetTitle">Tambah Akun</h3>
     <div class="field"><label>Nama akun</label><input type="text" id="finAcctName" placeholder="mis. BRI, BNI, GoPay"></div>
-    <div class="field"><label>Saldo awal bulan <span id="finAcctSaldoMonthLabel"></span> (Rp)</label><input type="number" id="finAcctSaldoAwal" placeholder="0" inputmode="numeric"></div>
-    <div class="field-hint">Ini bukan saldo rekening asli — anggap aja modal/alokasi yang kamu tentuin sendiri buat bulan ini, nanti otomatis dikurangi/ditambah sama transaksi yang kamu tandain ke akun ini.</div>
+    <div class="field"><label>Saldo di bulan <span id="finAcctSaldoMonthLabel"></span> (Rp)</label><input type="number" id="finAcctSaldoAwal" placeholder="0" inputmode="numeric"></div>
+    <div class="field-hint">Nilainya otomatis kebawa jadi modal buat bulan-bulan berikutnya (gak perlu diisi ulang tiap bulan). Cukup ubah angka ini kalau mau KOREKSI manual — misal biar pas sama saldo rekening asli.</div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="finAcctDeleteBtn" style="display:none;">Hapus</button>
       <button class="btn ghost" id="finAcctCancelBtn">Batal</button>

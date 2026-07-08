@@ -47,9 +47,9 @@ function finGetHmForUnit(unitId){ return finGetCacheHm()[unitId]||[]; }
 function finGetRatesForUnit(unitId){ return finGetCacheRates()[unitId]||[]; }
 function finGetCacheAccounts(){ try{ return JSON.parse(localStorage.getItem('fin_cache_accounts'))||[]; }catch(e){ return []; } }
 function finSetCacheAccounts(data){ localStorage.setItem('fin_cache_accounts', JSON.stringify(data)); }
-function finGetCacheSaldo(){ try{ return JSON.parse(localStorage.getItem('fin_cache_saldo'))||{}; }catch(e){ return {}; } } // {monthKey:{accountId:amount}}
+function finGetCacheSaldo(){ try{ return JSON.parse(localStorage.getItem('fin_cache_saldo'))||{}; }catch(e){ return {}; } } // {accountId:[{monthKey,amount}, ...]}
 function finSetCacheSaldo(data){ localStorage.setItem('fin_cache_saldo', JSON.stringify(data)); }
-function finGetSaldoForMonth(monthKey){ return finGetCacheSaldo()[monthKey]||{}; }
+function finGetSaldoHistoryForAccount(accountId){ return finGetCacheSaldo()[accountId]||[]; }
 function finGetCacheCategories(){ try{ return JSON.parse(localStorage.getItem('fin_cache_categories'))||{}; }catch(e){ return {}; } } // {business:[...]}
 function finSetCacheCategories(data){ localStorage.setItem('fin_cache_categories', JSON.stringify(data)); }
 function finGetCategoriesFor(business){ return finGetCacheCategories()[business]||[]; }
@@ -271,20 +271,20 @@ async function finDeleteAccount(accountId){
   try{ await finApiRaw('acct-delete', {vaultId, accountId}); }
   catch(e){ finHandleSaveError(e, 'acct-delete', {accountId}); }
 }
+// Set/koreksi checkpoint saldo 1 akun di 1 bulan tertentu. Ini BUKAN alokasi ulang tiap
+// bulan — checkpoint ini otomatis jadi modal buat bulan-bulan berikutnya juga (lihat
+// finAccountBalanceUpTo). Cukup diisi sekali (modal awal akun) atau sesekali kalau mau
+// koreksi manual (misal biar pas sama saldo rekening asli).
 async function finSetSaldoAwal(monthKey, accountId, amount){
-  const all = finGetCacheSaldo(); all[monthKey] = all[monthKey]||{}; all[monthKey][accountId] = amount; finSetCacheSaldo(all);
+  const all = finGetCacheSaldo();
+  const hist = all[accountId] = all[accountId]||[];
+  const idx = hist.findIndex(h=>h.monthKey===monthKey);
+  if(idx>-1) hist[idx] = {monthKey, amount}; else hist.push({monthKey, amount});
+  hist.sort((a,b)=>a.monthKey.localeCompare(b.monthKey));
+  finSetCacheSaldo(all);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('acct-saldo-set', {vaultId, monthKey, accountId, amount}); }
   catch(e){ finHandleSaveError(e, 'acct-saldo-set', {monthKey, accountId, amount}); }
-}
-async function finEnsureSaldoForMonth(monthKey){
-  if(finGetCacheSaldo()[monthKey]) return; // udah pernah diambil
-  const vaultId = finGetVaultId(); if(!vaultId) return;
-  try{
-    const saldo = await finApiPath('/finance/accounts/saldo/list', {vaultId, monthKey});
-    const all = finGetCacheSaldo(); all[monthKey] = saldo; finSetCacheSaldo(all);
-    renderKeuanganBody();
-  }catch(e){ /* offline, biarin kosong dulu */ }
 }
 
 async function finAddCategory(business, name){
@@ -325,6 +325,8 @@ async function finSyncAll(){
     }
     const accounts = await finApiPath('/finance/accounts/list', {vaultId});
     finSetCacheAccounts(accounts);
+    const saldoHist = await finApiPath('/finance/accounts/saldo/list', {vaultId});
+    finSetCacheSaldo(saldoHist);
     let cats = await finApiPath('/finance/categories/list', {vaultId, business:'pribadi'});
     if(!cats.length){
       for(const c of ['Gaji','Makan','Transport','Belanja','Tagihan','Lain-lain']) await finAddCategory('pribadi', c);
@@ -433,27 +435,46 @@ function finBusinessMonthNet(business, monthKey){
   return {masuk, keluar, net: masuk-keluar};
 }
 
-// Saldo tiap akun bank/e-wallet buat bulan tertentu = saldo awal (alokasi manual) +
-// transaksi apapun (lintas bisnis) yang ditandain ke akun itu + pendapatan/gaji
-// operator Eksa yang ditandain ke akun itu di setting unitnya.
-function finAccountBalanceAll(monthKey){
-  const accounts = finGetCacheAccounts();
-  const saldoAwal = finGetSaldoForMonth(monthKey);
-  const balances = {};
-  accounts.forEach(a=>{ balances[a.id] = saldoAwal[a.id]||0; });
+// Delta 1 akun di 1 bulan tertentu = semua transaksi (lintas bisnis) yang ditandain ke
+// akun itu + pendapatan/gaji operator Eksa yang ditandain ke akun itu di setting unitnya.
+function finAccountMonthDelta(accountId, monthKey){
+  let delta = 0;
   const txAll = finGetCacheTx();
   Object.keys(txAll).forEach(biz=>{
     finTxInMonth(txAll[biz]||[], monthKey).forEach(t=>{
-      if(t.account && balances.hasOwnProperty(t.account)){
-        balances[t.account] += (t.type==='in'? t.amount : -t.amount);
-      }
+      if(t.account===accountId) delta += (t.type==='in'? t.amount : -t.amount);
     });
   });
   finGetCacheUnits().forEach(u=>{
     const r = finEksaUnitMonthNet(u.id, monthKey);
-    if(u.incomeAccountId && balances.hasOwnProperty(u.incomeAccountId)) balances[u.incomeAccountId] += r.pendapatan;
-    if(u.salaryAccountId && balances.hasOwnProperty(u.salaryAccountId)) balances[u.salaryAccountId] -= r.gajiOperator;
+    if(u.incomeAccountId===accountId) delta += r.pendapatan;
+    if(u.salaryAccountId===accountId) delta -= r.gajiOperator;
   });
+  return delta;
+}
+// Saldo akun sampai dengan bulan tertentu (KUMULATIF, bukan cuma bulan itu doang).
+// Ambil checkpoint (modal awal/koreksi) paling akhir yang <= bulan target, lalu
+// jumlahkan semua transaksi dari bulan checkpoint itu s/d bulan target — jadi laba
+// bulan-bulan sebelumnya otomatis nempel jadi modal, gak perlu diisi ulang tiap bulan.
+function finAccountBalanceUpTo(accountId, targetMonthKey){
+  const history = finGetSaldoHistoryForAccount(accountId);
+  let baseline = null;
+  history.forEach(h=>{ if(h.monthKey<=targetMonthKey && (!baseline || h.monthKey>baseline.monthKey)) baseline = h; });
+  if(!baseline) return 0; // belum pernah diisi modal awal sampai bulan ini
+  let balance = baseline.amount;
+  let cursor = new Date(finParseMonthKey(baseline.monthKey));
+  const target = finParseMonthKey(targetMonthKey);
+  while(cursor <= target){
+    balance += finAccountMonthDelta(accountId, finMonthKey(cursor));
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+  }
+  return balance;
+}
+function finParseMonthKey(mk){ const [y,m] = mk.split('-').map(Number); return new Date(y, m-1, 1); }
+function finAccountBalanceAll(monthKey){
+  const accounts = finGetCacheAccounts();
+  const balances = {};
+  accounts.forEach(a=>{ balances[a.id] = finAccountBalanceUpTo(a.id, monthKey); });
   return balances;
 }
 function finSaldoTotal(monthKey){
@@ -469,7 +490,7 @@ function finExportAll(){
     hmEksa: finGetCacheHm(),
     rateEksa: finGetCacheRates(),
     akun: finGetCacheAccounts(),
-    saldoAwalBulanan: finGetCacheSaldo(),
+    riwayatSaldoAkun: finGetCacheSaldo(),
     kategori: finGetCacheCategories(),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
@@ -559,11 +580,10 @@ function finWireMonthNav(afterChange){
   });
 }
 
-/* ---------------- RINGKASAN (Dashboard) ---------------- */
+/* ---------------- RINGKASAN (Dashboard + Saldo per Akun) ---------------- */
 function renderFinRingkasan(){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
   const monthKey = finMonthKey(finMonthCursor);
-  finEnsureSaldoForMonth(monthKey);
   const main = document.createElement('div');
   main.innerHTML = finMonthNavHtml();
   wrap.appendChild(main);
@@ -573,6 +593,24 @@ function renderFinRingkasan(){
   const totalCard = document.createElement('div'); totalCard.className='fin-saldo-total-card';
   totalCard.innerHTML = `<div class="fin-saldo-total-label">Saldo Total</div><div class="fin-saldo-total-val">${finFmt(saldoTotal)}</div>`;
   main.appendChild(totalCard);
+
+  // --- Saldo per akun (pindah dari Pribadi — ini soal saldo total, bukan cuma sehari-hari) ---
+  const accounts = finGetCacheAccounts();
+  const balances = finAccountBalanceAll(monthKey);
+  const acctSection = document.createElement('div');
+  acctSection.innerHTML = `<div class="fin-section-label">Saldo per Akun</div><div id="finAcctList"></div><button class="btn ghost" id="finAcctAddBtn" style="width:100%; margin-top:8px;">+ Tambah Akun</button>`;
+  main.appendChild(acctSection);
+  const acctListEl = acctSection.querySelector('#finAcctList');
+  acctListEl.innerHTML = accounts.length ? accounts.map(a=>`
+    <div class="fin-acct-row" data-id="${a.id}">
+      <div class="fin-acct-name">${escapeHtml(a.name)}</div>
+      <div class="fin-acct-val" style="color:${(balances[a.id]||0)>=0?'var(--ink)':'var(--danger)'}">${finFmt(balances[a.id]||0)}</div>
+    </div>
+  `).join('') : '<div class="fin-empty">Belum ada akun. Tambahin BRI/BNI/e-wallet dulu.</div>';
+  acctListEl.querySelectorAll('[data-id]').forEach(row=>{
+    row.addEventListener('click', ()=>openFinAcctSheet(accounts.find(a=>a.id===row.dataset.id)));
+  });
+  acctSection.querySelector('#finAcctAddBtn').addEventListener('click', ()=>openFinAcctSheet(null));
 
   const rowsWrap = document.createElement('div');
   let html = '';
@@ -599,35 +637,16 @@ function renderFinRingkasan(){
   });
 }
 
-/* ---------------- PRIBADI (akun + pengeluaran harian + ringkasan bisnis) ---------------- */
+/* ---------------- PRIBADI (khusus pengeluaran sehari-hari + ringkasan bisnis) ---------------- */
 function renderFinPribadi(){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
   const monthKey = finMonthKey(finMonthCursor);
-  finEnsureSaldoForMonth(monthKey);
-  const accounts = finGetCacheAccounts();
-  const balances = finAccountBalanceAll(monthKey);
 
   const main = document.createElement('div');
   main.innerHTML = finBackLinkHtml() + finMonthNavHtml();
   wrap.appendChild(main);
   finWireBackLink();
   finWireMonthNav(renderFinPribadi);
-
-  // --- Saldo per akun ---
-  const acctSection = document.createElement('div');
-  acctSection.innerHTML = `<div class="fin-section-label">Saldo per Akun</div><div id="finAcctList"></div><button class="btn ghost" id="finAcctAddBtn" style="width:100%; margin-top:8px;">+ Tambah Akun</button>`;
-  main.appendChild(acctSection);
-  const acctListEl = acctSection.querySelector('#finAcctList');
-  acctListEl.innerHTML = accounts.length ? accounts.map(a=>`
-    <div class="fin-acct-row" data-id="${a.id}">
-      <div class="fin-acct-name">${escapeHtml(a.name)}</div>
-      <div class="fin-acct-val" style="color:${(balances[a.id]||0)>=0?'var(--ink)':'var(--danger)'}">${finFmt(balances[a.id]||0)}</div>
-    </div>
-  `).join('') : '<div class="fin-empty">Belum ada akun. Tambahin BRI/BNI/e-wallet dulu.</div>';
-  acctListEl.querySelectorAll('[data-id]').forEach(row=>{
-    row.addEventListener('click', ()=>openFinAcctSheet(accounts.find(a=>a.id===row.dataset.id)));
-  });
-  acctSection.querySelector('#finAcctAddBtn').addEventListener('click', ()=>openFinAcctSheet(null));
 
   // --- Pengeluaran sehari-hari (kategori custom) ---
   const cache = finGetCacheTx();
@@ -681,7 +700,10 @@ function openFinAcctSheet(acc){
   document.getElementById('finAcctName').value = acc ? acc.name : '';
   const monthKey = finMonthKey(finMonthCursor);
   document.getElementById('finAcctSaldoMonthLabel').textContent = finMonthLabel(finMonthCursor);
-  document.getElementById('finAcctSaldoAwal').value = acc ? (finGetSaldoForMonth(monthKey)[acc.id]||0) : 0;
+  // Defaultnya nilai saldo kumulatif sampai bulan yang lagi dilihat (sudah termasuk carry-forward
+  // dari bulan-bulan lalu). Kalau user gak ubah apa-apa & langsung simpan, gak ada efek apapun —
+  // ini cuma jadi checkpoint koreksi kalau user beneran ubah angkanya.
+  document.getElementById('finAcctSaldoAwal').value = acc ? finAccountBalanceUpTo(acc.id, monthKey) : 0;
   document.getElementById('finAcctDeleteBtn').style.display = acc ? '' : 'none';
   document.getElementById('finAcctOverlay').classList.add('show');
 }

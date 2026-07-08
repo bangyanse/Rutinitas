@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rutin-v1.7';
+const CACHE_NAME = 'rutin-v1.8';
 const ASSETS = [
   './index.html',
   './manifest.json',
