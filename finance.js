@@ -395,6 +395,15 @@ function finTodayStr(){
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+function finAddDaysStr(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m-1, d+n);
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+}
+// Tanggal terakhir dipakai buat input HM — biar gak jump balik ke "hari ini" tiap sheet
+// Input HM di-render ulang (misal abis simpan). Cuma null (jadi default hari ini) pas app
+// pertama kali dibuka.
+let finHmLastDate = null;
 function finFmtN(n){ return parseFloat(parseFloat(n).toFixed(1)); }
 function finMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function finMonthLabel(d){ return FIN_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
@@ -977,7 +986,7 @@ function renderFinEksaInput(body){
   const accounts = finGetCacheAccounts();
   const rows = finGetHmForUnit(unitId);
   const lastRow = rows[rows.length-1];
-  const today = finTodayStr();
+  const today = finHmLastDate || finTodayStr();
   const accOptions = '<option value="">— Belum dipilih —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   body.innerHTML = `
     <div class="fin-section-label">Akun buat gaji &amp; pemasukan (unit ini)</div>
@@ -1028,6 +1037,9 @@ function renderFinEksaInput(body){
     if(isNaN(hmAwal)){ showToast('HM Awal kosong'); return; }
     if(isNaN(hmAkhir) || hmAkhir<=hmAwal){ showToast('HM Akhir harus lebih besar dari HM Awal'); return; }
     await finAddHm(unitId, tgl, hmAwal, hmAkhir);
+    // inget tanggal ini biar sheet gak balik ke "hari ini" pas dibuka lagi — dimajuin 1 hari
+    // biar gampang lanjut input HM hari berikutnya (khas kalo lagi ngejar backlog HM lama).
+    finHmLastDate = finAddDaysStr(tgl, 1);
     showToast('Tersimpan');
     renderFinEksa();
   });
