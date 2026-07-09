@@ -37,6 +37,11 @@ function finClearVault(){
 /* ---------------- Cache lokal (biar tetap bisa dibuka offline) ---------------- */
 function finGetCacheTx(){ try{ return JSON.parse(localStorage.getItem('fin_cache_tx'))||{pribadi:[],rental_eksa:[],sawit:[],walet:[]}; }catch(e){ return {pribadi:[],rental_eksa:[],sawit:[],walet:[]}; } }
 function finSetCacheTx(data){ localStorage.setItem('fin_cache_tx', JSON.stringify(data)); }
+// Cache foto nota/bukti pengeluaran Eksa — {fotoId: dataUrl}. Foto DISIMPAN TERPISAH dari
+// tx (baik di server maupun cache lokal ini), biar cache tx utama gak membengkak. Diambil
+// lazy (batch-get) pas render Pengeluaran Eksa, bukan di-sync penuh kayak akun/kategori.
+function finGetCacheFotos(){ try{ return JSON.parse(localStorage.getItem('fin_cache_fotos'))||{}; }catch(e){ return {}; } }
+function finSetCacheFotos(data){ localStorage.setItem('fin_cache_fotos', JSON.stringify(data)); }
 function finGetCacheUnits(){ try{ return JSON.parse(localStorage.getItem('fin_cache_units'))||[]; }catch(e){ return []; } }
 function finSetCacheUnits(units){ localStorage.setItem('fin_cache_units', JSON.stringify(units)); }
 function finGetCacheHm(){ try{ return JSON.parse(localStorage.getItem('fin_cache_hm'))||{}; }catch(e){ return {}; } } // {unitId:[...]}
@@ -77,6 +82,7 @@ const FIN_ENDPOINT = {
   'acct-add':'/finance/accounts/add', 'acct-rename':'/finance/accounts/rename', 'acct-delete':'/finance/accounts/delete',
   'acct-saldo-set':'/finance/accounts/saldo/set',
   'cat-add':'/finance/categories/add', 'cat-delete':'/finance/categories/delete',
+  'nota-foto-upload':'/finance/eksa/pengeluaran/foto/upload', 'nota-foto-delete':'/finance/eksa/pengeluaran/foto/delete',
 };
 // dilempar kalau server BENERAN nolak requestnya (misal data gak valid) — beda dari
 // gagal fetch karena offline. Kalau ini yang kejadian, jangan diam-diam dimasukin
@@ -155,6 +161,8 @@ async function finAddTx(business, partial){
     date: partial.date || finTodayStr(),
     account: partial.account || '',
   };
+  if(Array.isArray(partial.items)) tx.items = partial.items;
+  if(Array.isArray(partial.notaFotoIds)) tx.notaFotoIds = partial.notaFotoIds;
   const cache = finGetCacheTx(); cache[business] = cache[business]||[]; cache[business].push(tx); finSetCacheTx(cache);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('tx-add', {vaultId, business, tx}); }
@@ -172,11 +180,62 @@ async function finUpdateTx(business, tx){
 }
 async function finDeleteTx(business, txId){
   const cache = finGetCacheTx();
+  const removed = (cache[business]||[]).find(t=>t.id===txId);
   cache[business] = (cache[business]||[]).filter(t=>t.id!==txId);
   finSetCacheTx(cache);
   const vaultId = finGetVaultId();
   try{ await finApiRaw('tx-delete', {vaultId, business, txId}); }
   catch(e){ finHandleSaveError(e, 'tx-delete', {business, txId}); }
+  // best-effort: hapus juga foto nota yang nempel (server udah otomatis hapus pas tx-delete
+  // sukses langsung, tapi kalau itu tadi masuk antrian offline, foto belum ke-cleanup di
+  // server — gapapa, itemnya numpuk dikit doang, gak kritis)
+  if(removed?.notaFotoIds?.length){
+    const fcache = finGetCacheFotos();
+    removed.notaFotoIds.forEach(fid=>delete fcache[fid]);
+    finSetCacheFotos(fcache);
+  }
+}
+// Upload 1 foto nota ke server (dipanggil pas simpan pengeluaran Eksa yang ada foto barunya).
+async function finUploadNotaFoto(fotoId, dataUrl){
+  const fcache = finGetCacheFotos(); fcache[fotoId] = dataUrl; finSetCacheFotos(fcache);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('nota-foto-upload', {vaultId, fotoId, dataUrl}); }
+  catch(e){ finHandleSaveError(e, 'nota-foto-upload', {fotoId, dataUrl}); }
+}
+// Ambil foto-foto yang belum ada di cache lokal (dipanggil pas render list Pengeluaran Eksa).
+async function finEnsureNotaFotos(fotoIds){
+  const fcache = finGetCacheFotos();
+  const missing = fotoIds.filter(fid=>!fcache[fid]);
+  if(!missing.length) return false;
+  const vaultId = finGetVaultId(); if(!vaultId) return false;
+  try{
+    const result = await finApiPath('/finance/eksa/pengeluaran/foto/batch-get', {vaultId, fotoIds:missing});
+    const fcache2 = finGetCacheFotos();
+    Object.assign(fcache2, result);
+    finSetCacheFotos(fcache2);
+    return true;
+  }catch(e){ return false; }
+}
+// Kompres foto ke JPEG max lebar 1000px sebelum disimpan (sama kayak fitur Catatan) —
+// biar ukuran datanya wajar buat dikirim & disimpan di server.
+function finCompressImageFile(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = 1000; const scale = Math.min(1, maxW/img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width*scale; canvas.height = img.height*scale;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL('image/jpeg',0.7));
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 async function finAddHm(unitId, tgl, hmAwal, hmAkhir){
@@ -907,6 +966,158 @@ document.getElementById('finTxDeleteBtn').addEventListener('click', async ()=>{
   renderKeuanganBody();
 });
 
+/* ---------------- SHEET PENGELUARAN RENTAL EKSA (rincian barang + foto nota) ---------------- */
+let finEksaExpEditingTx = null;
+let finEksaExpItems = [];
+let finEksaExpFotos = []; // {id, dataUrl}
+let finEksaExpFotosRemoved = [];
+
+function finEksaExpRecalcTotal(){
+  const total = finEksaExpItems.reduce((s,it)=>s+(Number(it.harga)||0)*(Number(it.jumlah)||0), 0);
+  document.getElementById('finEksaExpTotalVal').textContent = finFmt(total);
+  return total;
+}
+function finEksaExpAddItemRow(){
+  finEksaExpItems.push({id: finNewId('i'), nama:'', harga:0, jumlah:1});
+}
+function finEksaExpRenderItemRows(){
+  const wrap = document.getElementById('finEksaExpItemsList');
+  wrap.innerHTML = finEksaExpItems.map(it=>`
+    <div class="fin-item-row" data-id="${it.id}">
+      <input type="text" class="fin-item-nama" placeholder="mis. Filter Kit" value="${escapeHtml(it.nama)}">
+      <input type="number" class="fin-item-harga" placeholder="0" value="${it.harga||''}" inputmode="numeric">
+      <input type="number" class="fin-item-jumlah" placeholder="1" value="${it.jumlah||''}" inputmode="numeric">
+      <button type="button" class="fin-item-remove" data-remove="${it.id}">✕</button>
+    </div>
+  `).join('');
+  wrap.querySelectorAll('.fin-item-row').forEach(row=>{
+    const it = finEksaExpItems.find(x=>x.id===row.dataset.id); if(!it) return;
+    row.querySelector('.fin-item-nama').addEventListener('input', e=>{ it.nama = e.target.value; });
+    row.querySelector('.fin-item-harga').addEventListener('input', e=>{ it.harga = Number(e.target.value)||0; finEksaExpRecalcTotal(); });
+    row.querySelector('.fin-item-jumlah').addEventListener('input', e=>{ it.jumlah = Number(e.target.value)||0; finEksaExpRecalcTotal(); });
+  });
+  wrap.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      finEksaExpItems = finEksaExpItems.filter(x=>x.id!==btn.dataset.remove);
+      if(!finEksaExpItems.length) finEksaExpAddItemRow(); // minimal 1 baris biar gak kosong total
+      finEksaExpRenderItemRows();
+    });
+  });
+  finEksaExpRecalcTotal();
+}
+function finEksaExpRenderPhotoGrid(){
+  const grid = document.getElementById('finEksaExpPhotoGrid');
+  grid.innerHTML = finEksaExpFotos.map(f=>`
+    <div class="fin-photo-thumb" data-id="${f.id}">
+      <img src="${f.dataUrl}" data-view="${f.id}">
+      <button type="button" class="fin-photo-remove" data-remove="${f.id}">✕</button>
+    </div>
+  `).join('') + (finEksaExpFotos.length<10 ? '<div class="fin-photo-add" id="finEksaExpAddPhotoBtn">+</div>' : '');
+  grid.querySelectorAll('[data-view]').forEach(img=>{
+    img.addEventListener('click', ()=>{
+      const f = finEksaExpFotos.find(x=>x.id===img.dataset.view);
+      if(f) window.open(f.dataUrl, '_blank');
+    });
+  });
+  grid.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      finEksaExpFotosRemoved.push(btn.dataset.remove);
+      finEksaExpFotos = finEksaExpFotos.filter(f=>f.id!==btn.dataset.remove);
+      finEksaExpRenderPhotoGrid();
+    });
+  });
+  const addBtn = document.getElementById('finEksaExpAddPhotoBtn');
+  if(addBtn) addBtn.addEventListener('click', ()=>document.getElementById('finEksaExpPhotoInput').click());
+}
+function openFinEksaExpSheet(tx){
+  finEksaExpEditingTx = tx || null;
+  finEksaExpFotosRemoved = [];
+  document.getElementById('finEksaExpSheetTitle').textContent = tx ? 'Edit Pengeluaran' : 'Tambah Pengeluaran';
+  document.getElementById('finEksaExpDate').value = tx ? tx.date : finTodayStr();
+  document.getElementById('finEksaExpNote').value = tx ? (tx.note||'') : '';
+  const accSel = document.getElementById('finEksaExpAccount');
+  const accounts = finGetCacheAccounts();
+  accSel.innerHTML = '<option value="">— Gak dicatat ke akun manapun —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+  accSel.value = tx ? (tx.account||'') : '';
+
+  if(tx && Array.isArray(tx.items) && tx.items.length){
+    finEksaExpItems = tx.items.map(it=>({id: it.id||finNewId('i'), nama: it.nama||'', harga: Number(it.harga)||0, jumlah: Number(it.jumlah)||0}));
+  } else if(tx){
+    // transaksi lama sebelum ada fitur rincian — tampilin sebagai 1 baris barang biar gak ilang datanya
+    finEksaExpItems = [{id: finNewId('i'), nama: tx.category||'Lainnya', harga: tx.amount||0, jumlah: 1}];
+  } else {
+    finEksaExpItems = [{id: finNewId('i'), nama:'', harga:0, jumlah:1}];
+  }
+  finEksaExpRenderItemRows();
+
+  const fcache = finGetCacheFotos();
+  const fotoIds = (tx && tx.notaFotoIds) || [];
+  finEksaExpFotos = fotoIds.filter(fid=>fcache[fid]).map(fid=>({id:fid, dataUrl:fcache[fid]}));
+  finEksaExpRenderPhotoGrid();
+  if(fotoIds.length){
+    // kalau ada foto yang belum kepegang di cache lokal (misal baru buka app ini di HP lain),
+    // ambil dari server dulu, baru render ulang grid-nya begitu dapet
+    finEnsureNotaFotos(fotoIds).then(gotNew=>{
+      if(!gotNew) return;
+      const fcache2 = finGetCacheFotos();
+      finEksaExpFotos = fotoIds.filter(fid=>fcache2[fid]).map(fid=>({id:fid, dataUrl:fcache2[fid]}));
+      finEksaExpRenderPhotoGrid();
+    });
+  }
+
+  document.getElementById('finEksaExpDeleteBtn').style.display = tx ? '' : 'none';
+  document.getElementById('finEksaExpOverlay').classList.add('show');
+}
+document.getElementById('finEksaExpAddItemBtn').addEventListener('click', ()=>{
+  finEksaExpAddItemRow();
+  finEksaExpRenderItemRows();
+});
+document.getElementById('finEksaExpPhotoInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0]; e.target.value=''; if(!file) return;
+  try{
+    const dataUrl = await finCompressImageFile(file);
+    finEksaExpFotos.push({id: finNewId('f'), dataUrl});
+    finEksaExpRenderPhotoGrid();
+  }catch(err){ showToast('Gagal proses foto, coba foto lain'); }
+});
+document.getElementById('finEksaExpCancelBtn').addEventListener('click', ()=>document.getElementById('finEksaExpOverlay').classList.remove('show'));
+document.getElementById('finEksaExpOverlay').addEventListener('click', e=>{ if(e.target.id==='finEksaExpOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('finEksaExpSaveBtn').addEventListener('click', async ()=>{
+  const date = document.getElementById('finEksaExpDate').value;
+  const note = document.getElementById('finEksaExpNote').value.trim();
+  const account = document.getElementById('finEksaExpAccount').value;
+  if(!date){ showToast('Pilih tanggal dulu ya'); return; }
+  const items = finEksaExpItems
+    .filter(it=>(it.nama||'').trim() && (Number(it.harga)||0)>0 && (Number(it.jumlah)||0)>0)
+    .map(it=>({id: it.id, nama: it.nama.trim(), harga: Number(it.harga), jumlah: Number(it.jumlah)}));
+  if(!items.length){ showToast('Isi minimal 1 barang (nama, harga, jumlah) dulu ya'); return; }
+  const amount = items.reduce((s,it)=>s+it.harga*it.jumlah, 0);
+  const category = items[0].nama + (items.length>1 ? ' +'+(items.length-1)+' lainnya' : '');
+  const notaFotoIds = finEksaExpFotos.map(f=>f.id);
+  const partial = {type:'out', amount, category, date, note, account, items, notaFotoIds};
+
+  if(finEksaExpEditingTx) await finUpdateTx('rental_eksa', {...finEksaExpEditingTx, ...partial});
+  else await finAddTx('rental_eksa', partial);
+
+  // upload semua foto yang lagi nempel (idempotent per fotoId, jadi yang lama gak masalah di-upload ulang)
+  finEksaExpFotos.forEach(f=>{ finUploadNotaFoto(f.id, f.dataUrl); });
+  // hapus foto yang di-remove pas edit (best-effort, gak dikawal antrian retry biar simple)
+  const vaultId = finGetVaultId();
+  finEksaExpFotosRemoved.forEach(fid=>{ finApiRaw('nota-foto-delete', {vaultId, fotoId:fid}).catch(()=>{}); });
+
+  document.getElementById('finEksaExpOverlay').classList.remove('show');
+  showToast('Tersimpan');
+  renderFinEksa();
+});
+document.getElementById('finEksaExpDeleteBtn').addEventListener('click', async ()=>{
+  if(!finEksaExpEditingTx) return;
+  if(!confirm('Hapus pengeluaran ini?')) return;
+  await finDeleteTx('rental_eksa', finEksaExpEditingTx.id);
+  document.getElementById('finEksaExpOverlay').classList.remove('show');
+  showToast('Dihapus');
+  renderFinEksa();
+});
+
 /* ---------------- RENTAL EKSA ---------------- */
 function finOpenUnitActions(u){
   if(!u) return;
@@ -1077,26 +1288,53 @@ function renderFinEksaPengeluaran(body){
 
   if(txAll.length){
     const listEl = document.getElementById('finTxList');
-    listEl.innerHTML = txAll.map(t=>`
+    const fcache = finGetCacheFotos();
+    listEl.innerHTML = txAll.map(t=>{
+      let rincianHtml = '';
+      let judul;
+      if(Array.isArray(t.items) && t.items.length){
+        judul = t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : '');
+        rincianHtml = t.items.map(it=>`
+          <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-top:2px;">
+            <span>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</span>
+            <span>${finFmt((Number(it.harga)||0)*(Number(it.jumlah)||0))}</span>
+          </div>
+        `).join('');
+      } else {
+        judul = t.category || 'Lainnya';
+        if(t.note) rincianHtml = `<div class="fin-tx-note">${escapeHtml(t.note)}</div>`;
+      }
+      const thumbs = (t.notaFotoIds||[]).filter(fid=>fcache[fid]).map(fid=>`<img src="${fcache[fid]}" data-view="${fid}">`).join('');
+      return `
       <div class="fin-tx-item" data-id="${t.id}">
-        <div>
-          <div class="fin-tx-cat">${escapeHtml(t.category||'Lainnya')}</div>
-          ${t.note?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
+        <div style="flex:1; min-width:0;">
+          <div class="fin-tx-cat">${escapeHtml(judul)}</div>
+          ${rincianHtml}
+          ${thumbs ? `<div class="fin-item-thumb-row">${thumbs}</div>` : ''}
           <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}</div>
         </div>
         <div class="fin-tx-amt out">-${finFmt(t.amount)}</div>
       </div>
-    `).join('');
+    `;
+    }).join('');
     listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
-      row.addEventListener('click', ()=>{
+      row.addEventListener('click', (e)=>{
+        const viewEl = e.target.closest('[data-view]');
+        if(viewEl){ window.open(fcache[viewEl.dataset.view], '_blank'); return; }
         const tx = txAll.find(t=>t.id===row.dataset.id);
-        openFinTxSheet('rental_eksa', tx);
+        openFinEksaExpSheet(tx);
       });
     });
+
+    // ambil foto yang belum ada di cache lokal (misal buka dari HP lain), render ulang kalau dapet yang baru
+    const allFotoIds = [...new Set(txAll.flatMap(t=>t.notaFotoIds||[]))];
+    if(allFotoIds.length){
+      finEnsureNotaFotos(allFotoIds).then(gotNew=>{ if(gotNew) renderFinEksa(); });
+    }
   }
   const fab = document.createElement('button');
   fab.className='fin-fab'; fab.innerHTML='+';
-  fab.addEventListener('click', ()=>openFinTxSheet('rental_eksa', null));
+  fab.addEventListener('click', ()=>openFinEksaExpSheet(null));
   body.appendChild(fab);
 }
 
