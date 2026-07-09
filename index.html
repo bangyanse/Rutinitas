@@ -1049,6 +1049,12 @@ document.getElementById('dayOverlay').addEventListener('click', e=>{ if(e.target
 
 /* ================= activities ================= */
 const timers = {};
+let lastTimerPersist = Date.now();
+function findActivityById(id){
+  let found=null;
+  Object.values(DB.days).forEach(list=>{ const a=list.find(x=>x.id===id); if(a) found=a; });
+  return found;
+}
 function formatTime(sec){
   sec=Math.max(0,Math.round(sec));
   const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
@@ -1223,6 +1229,25 @@ setInterval(()=>{
     if(over && !t.alarmed){ t.alarmed=true; triggerAlarm(act.name); cancelPushAlarm(id); }
   });
   renderMiniPlayer();
+  // Simpan progres timer yang lagi jalan tiap ~10 detik ke localStorage. Tujuannya: kalau
+  // app bener-bener KETUTUP TOTAL (bukan cuma background) pas timer masih jalan, elapsedSeconds
+  // yang kesimpen paling telat cuma "kurang dari 10 detik" ketinggalan — begitu app dibuka lagi,
+  // timer keliatan cuma KE-PAUSE di titik itu (karena flag `running` di objek `timers` cuma
+  // hidup di memori, otomatis ilang pas app di-kill), BUKAN balik ke 0 kayak sebelumnya (dulu
+  // elapsedSeconds cuma disimpan pas user tekan pause manual, jadi progres selama timer jalan
+  // gak ke-backup sama sekali).
+  const now = Date.now();
+  if(now - lastTimerPersist >= 10000){
+    Object.keys(timers).forEach(id=>{
+      const t = timers[id]; if(!t.running) return;
+      const act = findActivityById(id); if(!act) return;
+      const delta = (now - t.startTs)/1000;
+      act.elapsedSeconds = (act.elapsedSeconds||0) + delta;
+      t.startTs = now; // checkpoint — biar delta yang barusan dijumlah gak keitung dobel lagi
+      logSeconds(act.category, delta); // ini juga manggil saveDB(), jadi elapsedSeconds ikut tersimpan
+    });
+    lastTimerPersist = now;
+  }
 },1000);
 function triggerAlarm(name){
   showToast(`Waktu ${name} selesai`);
