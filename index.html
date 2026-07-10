@@ -788,6 +788,20 @@ function urlBase64ToUint8Array(base64String){
 function pushConfigured(){
   return PUSH_SERVER_URL.indexOf('YOUR-SUBDOMAIN')===-1 && VAPID_PUBLIC_KEY.indexOf('GANTI_DENGAN')===-1;
 }
+// Bandingin key yang KEPAKE di subscription yang udah ada (asli, dari browser) dengan key yang
+// kita mau pakai sekarang. Return true/false kalau bisa dipastikan, atau null kalau browser ini
+// gak nge-expose `sub.options.applicationServerKey` (beberapa versi Safari lama) — di kasus itu
+// kita gak bisa mastiin langsung, jadi caller wajib pakai fallback yang lebih hati-hati.
+function subscriptionKeyMatches(sub, currentKeyBytes){
+  try{
+    const optKey = sub && sub.options && sub.options.applicationServerKey;
+    if(!optKey) return null;
+    const a = new Uint8Array(optKey);
+    if(a.length !== currentKeyBytes.length) return false;
+    for(let i=0;i<a.length;i++){ if(a[i]!==currentKeyBytes[i]) return false; }
+    return true;
+  }catch(e){ return null; }
+}
 async function enablePushAlarm(){
   if(!pushConfigured()){ showToast('Server push belum di-setup. Lihat PUSH_SETUP.md'); return false; }
   if(!('serviceWorker' in navigator) || !('PushManager' in window)){ showToast('Browser ini tidak dukung push notification'); return false; }
@@ -800,10 +814,16 @@ async function enablePushAlarm(){
     // dari yang dipakai sekarang (misal abis rotate key di server) — subscription lama itu
     // gak bakal valid lagi buat key baru, dan browser gak ngizinin subscribe() nimpa subscription
     // yang masih ada, jadi WAJIB unsubscribe dulu baru bisa subscribe ulang pakai key yang baru.
-    const lastKeyUsed = localStorage.getItem('rutin_push_key');
-    if(sub && lastKeyUsed && lastKeyUsed !== VAPID_PUBLIC_KEY){
-      await sub.unsubscribe();
-      sub = null;
+    if(sub){
+      const currentKeyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      const match = subscriptionKeyMatches(sub, currentKeyBytes);
+      const lastKeyUsed = localStorage.getItem('rutin_push_key');
+      // match===false: dipastikan beda. match===null (browser gak bisa dicek langsung): pakai
+      // penanda lokal sebagai fallback — TERMASUK kalau penanda itu belum pernah kesimpen sama
+      // sekali (device lama dari sebelum ada fix ini), dianggap "gak match" biar aman, bukan
+      // diasumsikan valid (ini yang kemarin jadi bug-nya).
+      const needsResubscribe = (match===false) || (match===null && lastKeyUsed!==VAPID_PUBLIC_KEY);
+      if(needsResubscribe){ await sub.unsubscribe(); sub = null; }
     }
     if(!sub){
       const keyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
@@ -835,12 +855,14 @@ async function ensurePushKeyUpToDate(){
   try{
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
+    if(!sub) return;
+    const currentKeyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+    const match = subscriptionKeyMatches(sub, currentKeyBytes);
     const lastKeyUsed = localStorage.getItem('rutin_push_key');
-    if(sub && lastKeyUsed && lastKeyUsed !== VAPID_PUBLIC_KEY){
+    const needsResubscribe = (match===false) || (match===null && lastKeyUsed!==VAPID_PUBLIC_KEY);
+    if(needsResubscribe){
       await enablePushAlarm();
-    } else if(sub && !lastKeyUsed){
-      // subscription lama dari sebelum kita mulai nyimpen rutin_push_key — anggap masih valid,
-      // catat aja key yang lagi dipakai sekarang biar bisa dideteksi kalau nanti berubah lagi
+    } else if(match===true && lastKeyUsed!==VAPID_PUBLIC_KEY){
       localStorage.setItem('rutin_push_key', VAPID_PUBLIC_KEY);
     }
   }catch(e){ /* diem-diem aja, jangan sampai ganggu proses buka app */ }
