@@ -769,7 +769,7 @@ const alarmAudio = new Audio('./alarm.mp3');
 /* ================= web push (alarm walau app ketutup) ================= */
 // Isi 2 nilai ini setelah kamu deploy Cloudflare Worker (lihat panduan PUSH_SETUP.md)
 const PUSH_SERVER_URL = 'https://rutin-push.rutinitas-iyan.workers.dev';
-const VAPID_PUBLIC_KEY = 'BA30UtgoYOy6gbsrAgopqoMT7d__x4TcpEpiXPzKuG1WrNyX5HyAHOfF5f79xWDAHCptYzCTyjUvZproteAGQYc';
+const VAPID_PUBLIC_KEY = 'BDUOBJYKEDnV7hGgvZWn8XNvZWjwTWrPRBdiWrLygJBYzM_qkpODItS3lzd98I8rUUdgdyVL5zfH5dWCE4wF37o';
 
 function getDeviceId(){
   let id = localStorage.getItem('rutin_device_id');
@@ -796,6 +796,15 @@ async function enablePushAlarm(){
     if(perm!=='granted'){ showToast('Izin notifikasi ditolak'); return false; }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    // Kalau ternyata udah ada subscription TAPI dibikin pakai VAPID public key yang BEDA
+    // dari yang dipakai sekarang (misal abis rotate key di server) — subscription lama itu
+    // gak bakal valid lagi buat key baru, dan browser gak ngizinin subscribe() nimpa subscription
+    // yang masih ada, jadi WAJIB unsubscribe dulu baru bisa subscribe ulang pakai key yang baru.
+    const lastKeyUsed = localStorage.getItem('rutin_push_key');
+    if(sub && lastKeyUsed && lastKeyUsed !== VAPID_PUBLIC_KEY){
+      await sub.unsubscribe();
+      sub = null;
+    }
     if(!sub){
       const keyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
       if(keyBytes.length!==65 || keyBytes[0]!==4){
@@ -809,9 +818,32 @@ async function enablePushAlarm(){
       body: JSON.stringify({ deviceId:getDeviceId(), subscription: sub.toJSON() })
     });
     localStorage.setItem('rutin_push_enabled','1');
+    localStorage.setItem('rutin_push_key', VAPID_PUBLIC_KEY);
     showToast('Notifikasi alarm diaktifkan');
     return true;
   } catch(err){ console.error(err); showToast('Gagal: '+(err && err.message ? err.message : err)); return false; }
+}
+// Dipanggil otomatis tiap app dibuka (bukan cuma pas user tekan tombol manual): kalau push
+// SUDAH PERNAH diaktifin sebelumnya tapi VAPID key server ternyata udah beda dari yang dipakai
+// subscription yang tersimpan di HP ini (misal abis rotate VAPID key), otomatis re-subscribe
+// diam-diam — user gak perlu inget buka Settings > tekan "Aktifkan Notifikasi Alarm" lagi
+// tiap kali key di-rotate.
+async function ensurePushKeyUpToDate(){
+  if(!pushConfigured()) return;
+  if(localStorage.getItem('rutin_push_enabled')!=='1') return; // belum pernah diaktifin, jangan minta izin sendiri
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const lastKeyUsed = localStorage.getItem('rutin_push_key');
+    if(sub && lastKeyUsed && lastKeyUsed !== VAPID_PUBLIC_KEY){
+      await enablePushAlarm();
+    } else if(sub && !lastKeyUsed){
+      // subscription lama dari sebelum kita mulai nyimpen rutin_push_key — anggap masih valid,
+      // catat aja key yang lagi dipakai sekarang biar bisa dideteksi kalau nanti berubah lagi
+      localStorage.setItem('rutin_push_key', VAPID_PUBLIC_KEY);
+    }
+  }catch(e){ /* diem-diem aja, jangan sampai ganggu proses buka app */ }
 }
 function isPushEnabled(){ return localStorage.getItem('rutin_push_enabled')==='1' && pushConfigured(); }
 async function schedulePushAlarm(act){
@@ -1997,6 +2029,8 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js').then(reg=>{
       // cek update setiap 60 detik
       setInterval(()=>reg.update(), 60000);
+      // cek diam-diam apa VAPID key server udah beda dari yang kepake di subscription HP ini
+      ensurePushKeyUpToDate();
 
       // kalau ada service worker baru yang menunggu, langsung aktifkan
       reg.addEventListener('updatefound', ()=>{
