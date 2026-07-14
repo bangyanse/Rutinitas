@@ -716,6 +716,43 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
   </div>
 </div>
 
+<!-- KEUANGAN: form rate Sawit (harga TBS + potongan + pajak + upah panen borongan) -->
+<div class="overlay" id="finSawitRateOverlay">
+  <div class="sheet">
+    <h3 id="finSawitRateSheetTitle">Tambah Rate Baru</h3>
+    <div class="field"><label>Berlaku mulai bulan</label>
+      <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:10px;">
+        <select id="finSawitRateFromBulan"></select>
+        <select id="finSawitRateFromTahun"></select>
+      </div>
+    </div>
+    <div class="field"><label>Harga TBS per kg (Rp)</label><input type="number" id="finSawitRateHarga" placeholder="mis. 2200"></div>
+    <div class="field"><label>Potongan sortasi/grading pabrik (%)</label><input type="number" id="finSawitRatePotongan" placeholder="0"></div>
+    <div class="field"><label>Pajak/PPh atas hasil jual (%)</label><input type="number" id="finSawitRatePajak" placeholder="0"></div>
+    <div class="field"><label>Upah panen borongan per kg (Rp)</label><input type="number" id="finSawitRateUpahPanen" placeholder="mis. 200"></div>
+    <div class="field-hint">Pendapatan bersih = berat × harga − potongan − pajak. Upah panen dihitung otomatis dari total kg × tarif ini (gak perlu dicatat manual sebagai transaksi).</div>
+    <div class="sheet-actions">
+      <button class="btn danger-text" id="finSawitRateDeleteBtn" style="display:none;">Hapus</button>
+      <button class="btn ghost" id="finSawitRateCancelBtn">Batal</button>
+      <button class="btn primary" id="finSawitRateSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- KEUANGAN: form Data Kebun Sawit (luas, tahun tanam, jumlah pohon) -->
+<div class="overlay" id="finSawitProfilOverlay">
+  <div class="sheet">
+    <h3>Data Kebun</h3>
+    <div class="field"><label>Luas kebun (hektar)</label><input type="number" step="0.1" id="finSawitProfilLuas" placeholder="0"></div>
+    <div class="field"><label>Tahun tanam (opsional)</label><input type="number" id="finSawitProfilTahun" placeholder="mis. 2018"></div>
+    <div class="field"><label>Jumlah pohon (opsional)</label><input type="number" id="finSawitProfilPohon" placeholder="0"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="finSawitProfilCancelBtn">Batal</button>
+      <button class="btn primary" id="finSawitProfilSaveBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
 <!-- KEUANGAN: kelola kategori Pribadi (mirip Jenis di halaman Rutin) -->
 <div class="overlay" id="finCatOverlay">
   <div class="sheet">
@@ -769,7 +806,7 @@ const alarmAudio = new Audio('./alarm.mp3');
 /* ================= web push (alarm walau app ketutup) ================= */
 // Isi 2 nilai ini setelah kamu deploy Cloudflare Worker (lihat panduan PUSH_SETUP.md)
 const PUSH_SERVER_URL = 'https://rutin-push.rutinitas-iyan.workers.dev';
-const VAPID_PUBLIC_KEY = 'BD7DkAUM0YYbXFi-H2tCiAstvHT5CpXl5_N9cfE5pfD5o1qrXHtJdfadU1oRlDxWW5nrfKNQP6l-otXDN0HG0RQ';
+const VAPID_PUBLIC_KEY = 'BDUOBJYKEDnV7hGgvZWn8XNvZWjwTWrPRBdiWrLygJBYzM_qkpODItS3lzd98I8rUUdgdyVL5zfH5dWCE4wF37o';
 
 function getDeviceId(){
   let id = localStorage.getItem('rutin_device_id');
@@ -1103,12 +1140,31 @@ document.getElementById('dayOverlay').addEventListener('click', e=>{ if(e.target
 
 /* ================= activities ================= */
 const timers = {};
-let lastTimerPersist = Date.now();
 function findActivityById(id){
   let found=null;
   Object.values(DB.days).forEach(list=>{ const a=list.find(x=>x.id===id); if(a) found=a; });
   return found;
 }
+// Dipanggil SEKALI pas app baru dibuka/reload: rekonstruksi timer yang lagi "jalan" dari data
+// yang udah kesimpen (act.isRunning + act.runStartTs), bukan dari objek `timers` di memori
+// (yang otomatis ilang kalau app di-kill total). Karena runStartTs itu jam mulai ASLI
+// (wall-clock), elapsed-nya kehitung akurat gak peduli app-nya mati berapa lama — beda dari
+// pendekatan "checkpoint tiap sekian detik" yang masih bisa nyangkut di angka basi kalau
+// appnya mati pas lagi nunggu checkpoint berikutnya.
+function restoreRunningTimers(){
+  Object.values(DB.days).forEach(list=>{
+    list.forEach(act=>{
+      if(act.isRunning && act.runStartTs){
+        const targetSec = act.duration*60;
+        const liveElapsed = (act.elapsedSeconds||0) + (Date.now()-act.runStartTs)/1000;
+        // alarmed=true kalau target udah kelewat, biar gak nge-replay bunyi alarm pas cuma
+        // buka app (push notif-nya kan udah sempet ngasih tau duluan kalau app lagi ketutup)
+        timers[act.id] = { running:true, startTs:act.runStartTs, alarmed: targetSec>0 && liveElapsed>=targetSec };
+      }
+    });
+  });
+}
+restoreRunningTimers(); // rekonstruksi timer yang masih "jalan" dari sebelum app ini dibuka/di-kill
 function formatTime(sec){
   sec=Math.max(0,Math.round(sec));
   const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
@@ -1185,7 +1241,14 @@ function moveActivity(id,dir){
 function toggleDone(id){
   const act = getActivities().find(a=>a.id===id); if(!act) return;
   const t = timers[id];
-  if(t && t.running){ act.elapsedSeconds=(act.elapsedSeconds||0)+(Date.now()-t.startTs)/1000; logSeconds(act.category,(Date.now()-t.startTs)/1000); t.running=false; cancelPushAlarm(id); }
+  if(t && t.running){
+    act.elapsedSeconds=(act.elapsedSeconds||0)+(Date.now()-t.startTs)/1000;
+    logSeconds(act.category,(Date.now()-t.startTs)/1000);
+    t.running=false;
+    act.isRunning=false;
+    act.runStartTs=0;
+    cancelPushAlarm(id);
+  }
   act.done = !act.done;
   logDoneToggle(act.category, act.done);
   saveDB(); renderActivities();
@@ -1200,6 +1263,8 @@ function toggleTimer(actId){
     logSeconds(act.category, delta);
     t.running=false;
     t.alarmed=false;
+    act.isRunning=false;
+    act.runStartTs=0;
     stopBeep();
     saveDB();
     cancelPushAlarm(actId);
@@ -1211,6 +1276,14 @@ function toggleTimer(actId){
     // jangan langsung bunyi lagi begitu ditekan play — anggap "sudah pernah alarm"
     const targetSec = act.duration*60;
     t.alarmed = targetSec>0 && (act.elapsedSeconds||0) >= targetSec;
+    // Simpan JAM MULAI (bukan cuma status di memori) ke DB — ini kuncinya biar timer yang
+    // lagi jalan gak "reset ke 0" ATAU "nyangkut di angka basi" kalau app ketutup total:
+    // begitu app dibuka lagi, elapsed dihitung ulang dari selisih waktu ASLI (wall-clock),
+    // bukan dari checkpoint terakhir yang sempat kesimpen. Jadi biar app mati berapa lama pun,
+    // begitu dibuka lagi elapsed-nya otomatis akurat (lihat restoreRunningTimers()).
+    act.isRunning=true;
+    act.runStartTs=t.startTs;
+    saveDB();
     schedulePushAlarm(act);
   }
   renderActivities();
@@ -1219,14 +1292,13 @@ function toggleTimer(actId){
 function stopAndResetTimer(actId){
   // STOP + RESET — hanya dari mini player
   const delta = timers[actId]&&timers[actId].running ? (Date.now()-timers[actId].startTs)/1000 : 0;
-  if(delta>0){
-    let act=null;
-    Object.values(DB.days).forEach(list=>{ const f=list.find(a=>a.id===actId); if(f) act=f; });
-    if(act){ logSeconds(act.category, delta); act.elapsedSeconds=0; }
-  } else {
-    let act=null;
-    Object.values(DB.days).forEach(list=>{ const f=list.find(a=>a.id===actId); if(f) act=f; });
-    if(act) act.elapsedSeconds=0;
+  let act=null;
+  Object.values(DB.days).forEach(list=>{ const f=list.find(a=>a.id===actId); if(f) act=f; });
+  if(act){
+    if(delta>0) logSeconds(act.category, delta);
+    act.elapsedSeconds=0;
+    act.isRunning=false;
+    act.runStartTs=0;
   }
   if(timers[actId]){ timers[actId].running=false; timers[actId].alarmed=false; }
   stopBeep(); saveDB(); renderActivities(); renderMiniPlayer();
@@ -1283,25 +1355,19 @@ setInterval(()=>{
     if(over && !t.alarmed){ t.alarmed=true; triggerAlarm(act.name); cancelPushAlarm(id); }
   });
   renderMiniPlayer();
-  // Simpan progres timer yang lagi jalan tiap ~10 detik ke localStorage. Tujuannya: kalau
-  // app bener-bener KETUTUP TOTAL (bukan cuma background) pas timer masih jalan, elapsedSeconds
-  // yang kesimpen paling telat cuma "kurang dari 10 detik" ketinggalan — begitu app dibuka lagi,
-  // timer keliatan cuma KE-PAUSE di titik itu (karena flag `running` di objek `timers` cuma
-  // hidup di memori, otomatis ilang pas app di-kill), BUKAN balik ke 0 kayak sebelumnya (dulu
-  // elapsedSeconds cuma disimpan pas user tekan pause manual, jadi progres selama timer jalan
-  // gak ke-backup sama sekali).
+  // Catet progres ke Progress/streak harian tiap ~60 detik selama timer jalan (bukan nunggu
+  // pause) — biar statistiknya gak nyangkut di 0 kalau sesi jalan lama banget tanpa dipause.
+  // Ini CUMA soal logging ke history, gak ngaruh ke perhitungan elapsed timer itu sendiri
+  // (elapsed selalu dihitung wall-clock dari act.runStartTs, lihat getElapsed/restoreRunningTimers).
   const now = Date.now();
-  if(now - lastTimerPersist >= 10000){
-    Object.keys(timers).forEach(id=>{
-      const t = timers[id]; if(!t.running) return;
-      const act = findActivityById(id); if(!act) return;
-      const delta = (now - t.startTs)/1000;
-      act.elapsedSeconds = (act.elapsedSeconds||0) + delta;
-      t.startTs = now; // checkpoint — biar delta yang barusan dijumlah gak keitung dobel lagi
-      logSeconds(act.category, delta); // ini juga manggil saveDB(), jadi elapsedSeconds ikut tersimpan
-    });
-    lastTimerPersist = now;
-  }
+  Object.keys(timers).forEach(id=>{
+    const t = timers[id]; if(!t.running) return;
+    if(!t.lastLogTs) t.lastLogTs = t.startTs;
+    if(now - t.lastLogTs < 60000) return;
+    const act = findActivityById(id); if(!act) return;
+    logSeconds(act.category, (now - t.lastLogTs)/1000);
+    t.lastLogTs = now;
+  });
 },1000);
 function triggerAlarm(name){
   showToast(`Waktu ${name} selesai`);
