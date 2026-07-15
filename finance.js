@@ -471,6 +471,21 @@ function finHmInMonth(rows, monthKey){ return (rows||[]).filter(r=>r.tgl && r.tg
 function finSumIn(list){ return list.filter(t=>t.type==='in').reduce((s,t)=>s+t.amount,0); }
 function finSumOut(list){ return list.filter(t=>t.type==='out').reduce((s,t)=>s+t.amount,0); }
 
+// Cocokin 1 transaksi ke query pencarian bebas (kategori, catatan, tanggal, nominal, dan
+// nama tiap barang rincian kalau ada) — dipakai fitur search di Pribadi & Pengeluaran Eksa.
+function finTxMatchesQuery(t, q){
+  if(!q) return true;
+  q = q.trim().toLowerCase();
+  if(!q) return true;
+  const parts = [
+    t.category||'', t.note||'', t.date||'',
+    t.date ? t.date.split('-').reverse().join('/') : '',
+    String(t.amount||''),
+  ];
+  if(Array.isArray(t.items)) t.items.forEach(it=>parts.push(it.nama||''));
+  return parts.join(' ').toLowerCase().includes(q);
+}
+
 // Pendapatan & gaji operator 1 unit Eksa, bulan tertentu (belum dikurangi pengeluaran — itu dihitung gabungan semua unit)
 function finEksaUnitMonthNet(unitId, monthKey){
   const rates = finGetRatesForUnit(unitId);
@@ -581,6 +596,10 @@ let finMonthCursor = new Date();
 let finEditingTx = null; // {business, tx} kalau lagi edit, null kalau tambah baru
 let finEditingRate = null; // effectiveFrom kalau lagi edit rate
 let finEditingAccount = null; // account id kalau lagi edit akun
+let finPribadiSearch = ''; // query pencarian transaksi Pribadi
+let finPribadiShowAll = false; // true = tampilin semua transaksi (semua bulan), bukan cuma bulan yang lagi dilihat
+let finEksaExpSearch = ''; // query pencarian pengeluaran Eksa
+let finEksaExpShowAll = false; // true = tampilin semua pengeluaran (semua bulan)
 
 function renderKeuangan(){
   finRenderQueueBadge();
@@ -708,45 +727,73 @@ function renderFinRingkasan(){
 /* ---------------- PRIBADI (khusus pengeluaran sehari-hari + ringkasan bisnis) ---------------- */
 function renderFinPribadi(){
   const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
-  const monthKey = finMonthKey(finMonthCursor);
 
   const main = document.createElement('div');
-  main.innerHTML = finBackLinkHtml() + finMonthNavHtml();
+  main.innerHTML = finBackLinkHtml() +
+    `<div class="fin-search-row" style="margin-top:12px;">
+      <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="finPribadiSearchInput" placeholder="Cari kategori, catatan, tanggal..." value="${escapeHtml(finPribadiSearch)}"></div>
+      <button type="button" class="fin-toggle-chip ${finPribadiShowAll?'active':''}" id="finPribadiShowAllBtn">${finPribadiShowAll?'Semua':'Bulan Ini'}</button>
+    </div>
+    <div id="finPribadiMonthNavWrap"></div>
+    <div class="fin-section-label">Pengeluaran Sehari-hari</div>
+    <div id="finPribadiListArea"></div>`;
   wrap.appendChild(main);
   finWireBackLink();
-  finWireMonthNav(renderFinPribadi);
 
-  // --- Pengeluaran sehari-hari (kategori custom) ---
-  const cache = finGetCacheTx();
-  const txAll = finTxInMonth(cache.pribadi||[], monthKey).sort((a,b)=>b.date.localeCompare(a.date));
-  const masuk = finSumIn(txAll), keluar = finSumOut(txAll);
-  const expSection = document.createElement('div');
-  expSection.innerHTML = `<div class="fin-section-label">Pengeluaran Sehari-hari</div>
-    <div class="fin-total-card" style="margin-bottom:14px;">
-      <div><div class="fin-total-label">Masuk</div><div class="fin-total-val" style="color:var(--positive); font-size:15px;">${finFmt(masuk)}</div></div>
-      <div><div class="fin-total-label">Keluar</div><div class="fin-total-val" style="color:var(--danger); font-size:15px;">${finFmt(keluar)}</div></div>
-      <div><div class="fin-total-label">Saldo</div><div class="fin-total-val" style="font-size:15px;">${finFmt(masuk-keluar)}</div></div>
-    </div>
-    ${txAll.length ? '<div id="finTxList"></div>' : '<div class="fin-empty">Belum ada transaksi bulan ini.</div>'}`;
-  main.appendChild(expSection);
-  if(txAll.length){
-    const listEl = expSection.querySelector('#finTxList');
-    listEl.innerHTML = txAll.map(t=>`
-      <div class="fin-tx-item" data-id="${t.id}">
-        <div>
-          <div class="fin-tx-cat">${escapeHtml(t.category||'Lainnya')}</div>
-          ${t.note?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
-          <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}</div>
-        </div>
-        <div class="fin-tx-amt ${t.type}">${t.type==='out'?'-':'+'}${finFmt(t.amount)}</div>
-      </div>
-    `).join('');
-    listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
-      row.addEventListener('click', ()=>openFinTxSheet('pribadi', txAll.find(t=>t.id===row.dataset.id)));
-    });
+  const monthNavWrap = main.querySelector('#finPribadiMonthNavWrap');
+  function renderMonthNavArea(){
+    if(finPribadiShowAll){
+      monthNavWrap.innerHTML = `<div class="fin-month-nav"><div class="fin-month-label">Semua Transaksi</div></div>`;
+    } else {
+      monthNavWrap.innerHTML = finMonthNavHtml();
+      finWireMonthNav(updatePribadiList);
+    }
   }
 
+  function updatePribadiList(){
+    renderMonthNavArea();
+    const monthKey = finMonthKey(finMonthCursor);
+    const cache = finGetCacheTx();
+    const base = finPribadiShowAll ? (cache.pribadi||[]) : finTxInMonth(cache.pribadi||[], monthKey);
+    const txAll = base.filter(t=>finTxMatchesQuery(t, finPribadiSearch)).sort((a,b)=>b.date.localeCompare(a.date));
+    const masuk = finSumIn(txAll), keluar = finSumOut(txAll);
+    const listArea = main.querySelector('#finPribadiListArea');
+    listArea.innerHTML = `
+      <div class="fin-total-card" style="margin-bottom:14px;">
+        <div><div class="fin-total-label">Masuk</div><div class="fin-total-val" style="color:var(--positive); font-size:15px;">${finFmt(masuk)}</div></div>
+        <div><div class="fin-total-label">Keluar</div><div class="fin-total-val" style="color:var(--danger); font-size:15px;">${finFmt(keluar)}</div></div>
+        <div><div class="fin-total-label">Saldo</div><div class="fin-total-val" style="font-size:15px;">${finFmt(masuk-keluar)}</div></div>
+      </div>
+      ${txAll.length ? '<div id="finTxList"></div>' : `<div class="fin-empty">${finPribadiSearch ? 'Gak ada transaksi yang cocok.' : (finPribadiShowAll ? 'Belum ada transaksi sama sekali.' : 'Belum ada transaksi bulan ini.')}</div>`}
+    `;
+    if(txAll.length){
+      const listEl = listArea.querySelector('#finTxList');
+      listEl.innerHTML = txAll.map(t=>`
+        <div class="fin-tx-item" data-id="${t.id}">
+          <div>
+            <div class="fin-tx-cat">${escapeHtml(t.category||'Lainnya')}</div>
+            ${t.note?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
+            <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}${finPribadiShowAll?' · '+finMonthLabel(finParseMonthKey(t.date.slice(0,7))):''}</div>
+          </div>
+          <div class="fin-tx-amt ${t.type}">${t.type==='out'?'-':'+'}${finFmt(t.amount)}</div>
+        </div>
+      `).join('');
+      listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
+        row.addEventListener('click', ()=>openFinTxSheet('pribadi', txAll.find(t=>t.id===row.dataset.id)));
+      });
+    }
+  }
+  updatePribadiList();
+
+  const searchInput = main.querySelector('#finPribadiSearchInput');
+  searchInput.addEventListener('input', ()=>{ finPribadiSearch = searchInput.value; updatePribadiList(); });
+  main.querySelector('#finPribadiShowAllBtn').addEventListener('click', ()=>{
+    finPribadiShowAll = !finPribadiShowAll;
+    renderFinPribadi(); // rebuild penuh biar tombol & label ke-refresh, search tetep kepake dari state
+  });
+
   // --- Pemasukan & pengeluaran dari bisnis (ringkasan, biar keliatan dari Pribadi juga) ---
+  const monthKey = finMonthKey(finMonthCursor);
   const bizSection = document.createElement('div');
   let bizHtml = `<div class="fin-section-label">Dari Bisnis</div>`;
   ['rental_eksa','sawit','walet'].forEach(biz=>{
@@ -754,7 +801,7 @@ function renderFinPribadi(){
     bizHtml += `<div class="fin-acct-row"><div class="fin-acct-name">${FIN_BIZ_LABEL[biz]}</div><div class="fin-acct-val" style="color:${r.net>=0?'var(--positive)':'var(--danger)'}">${finFmt(r.net)}</div></div>`;
   });
   bizSection.innerHTML = bizHtml;
-  main.appendChild(bizSection);
+  wrap.appendChild(bizSection);
 
   const fab = document.createElement('button');
   fab.className='fin-fab'; fab.innerHTML='+';
@@ -1275,63 +1322,94 @@ function renderFinEksaInput(body){
 }
 
 function renderFinEksaPengeluaran(body){
-  const monthKey = finMonthKey(finMonthCursor);
-  const cache = finGetCacheTx();
-  const txAll = finTxInMonth(cache.rental_eksa||[], monthKey).sort((a,b)=>b.date.localeCompare(a.date));
-  const keluar = finSumOut(txAll);
-  body.innerHTML = finMonthNavHtml() +
-    `<div class="fin-total-card" style="margin-bottom:14px;">
-      <div class="fin-total-label">Total Pengeluaran Bulan Ini</div><div class="fin-total-val" style="color:var(--danger);">${finFmt(keluar)}</div>
-    </div>` +
-    (txAll.length ? `<div id="finTxList"></div>` : `<div class="fin-empty">Belum ada pengeluaran tambahan bulan ini.<br>Tap tombol + buat nambah (perawatan, sparepart, dll).</div>`);
-  finWireMonthNav(renderFinEksa);
+  body.innerHTML = `
+    <div class="fin-search-row">
+      <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="finEksaExpSearchInput" placeholder="Cari barang, catatan, tanggal..." value="${escapeHtml(finEksaExpSearch)}"></div>
+      <button type="button" class="fin-toggle-chip ${finEksaExpShowAll?'active':''}" id="finEksaExpShowAllBtn">${finEksaExpShowAll?'Semua':'Bulan Ini'}</button>
+    </div>
+    <div id="finEksaExpMonthNavWrap"></div>
+    <div id="finEksaExpListArea"></div>
+  `;
 
-  if(txAll.length){
-    const listEl = document.getElementById('finTxList');
-    const fcache = finGetCacheFotos();
-    listEl.innerHTML = txAll.map(t=>{
-      let rincianHtml = '';
-      let judul;
-      if(Array.isArray(t.items) && t.items.length){
-        judul = t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : '');
-        rincianHtml = t.items.map(it=>`
-          <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-top:2px;">
-            <span>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</span>
-            <span>${finFmt((Number(it.harga)||0)*(Number(it.jumlah)||0))}</span>
-          </div>
-        `).join('');
-      } else {
-        judul = t.category || 'Lainnya';
-        if(t.note) rincianHtml = `<div class="fin-tx-note">${escapeHtml(t.note)}</div>`;
-      }
-      const thumbs = (t.notaFotoIds||[]).filter(fid=>fcache[fid]).map(fid=>`<img src="${fcache[fid]}" data-view="${fid}">`).join('');
-      return `
-      <div class="fin-tx-item" data-id="${t.id}">
-        <div style="flex:1; min-width:0;">
-          <div class="fin-tx-cat">${escapeHtml(judul)}</div>
-          ${rincianHtml}
-          ${thumbs ? `<div class="fin-item-thumb-row">${thumbs}</div>` : ''}
-          <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}</div>
-        </div>
-        <div class="fin-tx-amt out">-${finFmt(t.amount)}</div>
-      </div>
-    `;
-    }).join('');
-    listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
-      row.addEventListener('click', (e)=>{
-        const viewEl = e.target.closest('[data-view]');
-        if(viewEl){ window.open(fcache[viewEl.dataset.view], '_blank'); return; }
-        const tx = txAll.find(t=>t.id===row.dataset.id);
-        openFinEksaExpSheet(tx);
-      });
-    });
-
-    // ambil foto yang belum ada di cache lokal (misal buka dari HP lain), render ulang kalau dapet yang baru
-    const allFotoIds = [...new Set(txAll.flatMap(t=>t.notaFotoIds||[]))];
-    if(allFotoIds.length){
-      finEnsureNotaFotos(allFotoIds).then(gotNew=>{ if(gotNew) renderFinEksa(); });
+  const monthNavWrap = body.querySelector('#finEksaExpMonthNavWrap');
+  function renderMonthNavArea(){
+    if(finEksaExpShowAll){
+      monthNavWrap.innerHTML = `<div class="fin-month-nav"><div class="fin-month-label">Semua Pengeluaran</div></div>`;
+    } else {
+      monthNavWrap.innerHTML = finMonthNavHtml();
+      finWireMonthNav(updateExpList);
     }
   }
+
+  function updateExpList(){
+    renderMonthNavArea();
+    const monthKey = finMonthKey(finMonthCursor);
+    const cache = finGetCacheTx();
+    const base = finEksaExpShowAll ? (cache.rental_eksa||[]) : finTxInMonth(cache.rental_eksa||[], monthKey);
+    const txAll = base.filter(t=>finTxMatchesQuery(t, finEksaExpSearch)).sort((a,b)=>b.date.localeCompare(a.date));
+    const keluar = finSumOut(txAll);
+    const listArea = body.querySelector('#finEksaExpListArea');
+    listArea.innerHTML = `<div class="fin-total-card" style="margin-bottom:14px;">
+        <div class="fin-total-label">Total Pengeluaran${finEksaExpShowAll?' (Semua)':' Bulan Ini'}</div><div class="fin-total-val" style="color:var(--danger);">${finFmt(keluar)}</div>
+      </div>` +
+      (txAll.length ? `<div id="finTxList"></div>` : `<div class="fin-empty">${finEksaExpSearch ? 'Gak ada pengeluaran yang cocok.' : (finEksaExpShowAll ? 'Belum ada pengeluaran sama sekali.' : 'Belum ada pengeluaran tambahan bulan ini.<br>Tap tombol + buat nambah (perawatan, sparepart, dll).')}</div>`);
+
+    if(txAll.length){
+      const listEl = listArea.querySelector('#finTxList');
+      const fcache = finGetCacheFotos();
+      listEl.innerHTML = txAll.map(t=>{
+        let rincianHtml = '';
+        let judul;
+        if(Array.isArray(t.items) && t.items.length){
+          judul = t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : '');
+          rincianHtml = t.items.map(it=>`
+            <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-top:2px;">
+              <span>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</span>
+              <span>${finFmt((Number(it.harga)||0)*(Number(it.jumlah)||0))}</span>
+            </div>
+          `).join('');
+        } else {
+          judul = t.category || 'Lainnya';
+          if(t.note) rincianHtml = `<div class="fin-tx-note">${escapeHtml(t.note)}</div>`;
+        }
+        const thumbs = (t.notaFotoIds||[]).filter(fid=>fcache[fid]).map(fid=>`<img src="${fcache[fid]}" data-view="${fid}">`).join('');
+        return `
+        <div class="fin-tx-item" data-id="${t.id}">
+          <div style="flex:1; min-width:0;">
+            <div class="fin-tx-cat">${escapeHtml(judul)}</div>
+            ${rincianHtml}
+            ${thumbs ? `<div class="fin-item-thumb-row">${thumbs}</div>` : ''}
+            <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}${finEksaExpShowAll?' · '+finMonthLabel(finParseMonthKey(t.date.slice(0,7))):''}</div>
+          </div>
+          <div class="fin-tx-amt out">-${finFmt(t.amount)}</div>
+        </div>
+      `;
+      }).join('');
+      listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
+        row.addEventListener('click', (e)=>{
+          const viewEl = e.target.closest('[data-view]');
+          if(viewEl){ window.open(fcache[viewEl.dataset.view], '_blank'); return; }
+          const tx = txAll.find(t=>t.id===row.dataset.id);
+          openFinEksaExpSheet(tx);
+        });
+      });
+
+      // ambil foto yang belum ada di cache lokal (misal buka dari HP lain), render ulang kalau dapet yang baru
+      const allFotoIds = [...new Set(txAll.flatMap(t=>t.notaFotoIds||[]))];
+      if(allFotoIds.length){
+        finEnsureNotaFotos(allFotoIds).then(gotNew=>{ if(gotNew) updateExpList(); });
+      }
+    }
+  }
+  updateExpList();
+
+  const searchInput = body.querySelector('#finEksaExpSearchInput');
+  searchInput.addEventListener('input', ()=>{ finEksaExpSearch = searchInput.value; updateExpList(); });
+  body.querySelector('#finEksaExpShowAllBtn').addEventListener('click', ()=>{
+    finEksaExpShowAll = !finEksaExpShowAll;
+    renderFinEksa(); // rebuild penuh biar tombol & label ke-refresh
+  });
+
   const fab = document.createElement('button');
   fab.className='fin-fab'; fab.innerHTML='+';
   fab.addEventListener('click', ()=>openFinEksaExpSheet(null));
