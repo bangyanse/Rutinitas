@@ -82,10 +82,10 @@ body.mp-active main{padding-bottom:var(--mp-extra, 210px);}
 
 .act-main{flex:1; min-width:0;}
 .act-cat-row{display:flex; align-items:center; gap:6px;}
-.act-cat{font-size:10.5px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.3px;}
+.act-cat{font-size:10px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.3px;}
 .act-neglect{font-size:10px; font-weight:700; color:var(--amber); background:var(--amber-soft); padding:1px 6px; border-radius:6px;}
-.act-name{font-size:15.5px; font-weight:600; margin-top:1px;}
-.act-target{font-size:12px; color:var(--ink-soft); margin-top:1px;}
+.act-name{font-size:14.5px; font-weight:600; margin-top:1px;}
+.act-target-inline{font-size:12px; font-weight:600; color:var(--accent); margin-left:4px;}
 .act-timer{display:flex; align-items:center; gap:6px; flex:0 0 auto;}
 .act-time{font-size:13.5px; font-weight:600; min-width:50px; text-align:right;}
 .act-time.over{color:var(--amber);}
@@ -123,6 +123,9 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .editor-toolbar button{display:flex; align-items:center; gap:5px; border:none; background:var(--surface-2); color:var(--ink); padding:9px 14px; border-radius:14px; font-size:13px; font-weight:600; cursor:pointer;}
 .editor-toolbar button.recording{background:var(--danger); color:#fff;}
 .editor-toolbar button svg{width:15px;height:15px;}
+.editor-toolbar button.fmt-btn{padding:8px 12px;}
+.editor-toolbar button.fmt-btn.active{background:var(--ig-gradient); color:#fff;}
+.editor-toolbar .toolbar-sep{width:1px; align-self:stretch; background:var(--line); margin:2px 4px;}
 #noteTitle{width:100%; border:none; background:none; font-size:26px; font-weight:800; color:var(--ink); padding:4px 2px 6px; outline:none;}
 .editor-toolbar{display:flex; align-items:center; gap:8px; padding:8px 0 12px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin-bottom:12px;}
 #noteBody{width:100%; min-height:340px; border:none; outline:none; background:none; color:var(--ink); font-size:15px; line-height:1.65; padding:2px;}
@@ -163,12 +166,11 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .kamus-syn-note{font-size:12.5px; color:var(--ink-soft); margin-top:3px;}
 .kamus-syn-example{font-size:13px; color:var(--ink-soft); font-style:italic; margin-top:5px; line-height:1.5;}
 .kamus-detail-edit{display:flex; align-items:center; gap:6px; background:none; border:1.5px solid var(--line); border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; color:var(--ink-soft); cursor:pointer; margin-top:24px; width:100%; justify-content:center;}
-.kamus-list-item{padding:9px 0; border-bottom:1px solid var(--line); cursor:pointer; display:flex; align-items:center; gap:10px;}
-.kamus-list-item:last-child{border-bottom:none;}
+.kamus-list-item{padding:11px 0; cursor:pointer; display:flex; align-items:center; gap:10px;}
 .kamus-list-item-main{flex:1; min-width:0;}
-.kamus-list-word{font-size:16px; font-weight:700; color:var(--ink);}
-.kamus-list-sub{font-size:12px; font-weight:700; color:var(--ink-soft); margin-top:1px; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.kamus-list-arti{font-size:13px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.kamus-list-word{font-size:15px; font-weight:700; color:var(--ink);}
+.kamus-list-sub{font-size:11.5px; font-weight:700; color:var(--ink-soft); margin-top:1px; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.kamus-list-arti{font-size:12.5px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .kamus-list-tag{font-size:10px; font-weight:800; color:var(--accent); background:var(--accent-soft); padding:3px 8px; border-radius:6px; flex:0 0 auto; text-transform:uppercase; letter-spacing:.3px;}
 
 /* progress view */
@@ -416,6 +418,12 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
       <main>
         <input type="text" id="noteTitle" placeholder="Judul">
         <div class="editor-toolbar">
+          <button type="button" id="fmtBoldBtn" class="fmt-btn" style="font-weight:800; font-size:15px;">B</button>
+          <button type="button" id="fmtItalicBtn" class="fmt-btn" style="font-style:italic; font-size:15px;">I</button>
+          <button type="button" id="fmtAlignLeftBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>
+          <button type="button" id="fmtAlignCenterBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>
+          <button type="button" id="fmtAlignRightBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>
+          <div class="toolbar-sep"></div>
           <button id="addImageBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Gambar</button>
           <button id="recordBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span id="recordBtnLabel">Rekam</span></button>
         </div>
@@ -1212,8 +1220,7 @@ function renderActivities(){
         <button class="check-btn ${act.done?'checked':''}" data-check="${act.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></button>
         <div class="act-main">
           <div class="act-cat-row"><span class="act-cat">${escapeHtml(act.category||'Lainnya')}</span>${(neglectDays!==null && neglectDays>=3)?`<span class="act-neglect">${neglectDays} hari</span>`:''}</div>
-          <div class="act-name">${escapeHtml(act.name)}</div>
-          <div class="act-target">Target ${act.duration} menit</div>
+          <div class="act-name">${escapeHtml(act.name)} <span class="act-target-inline">(${act.duration} menit)</span></div>
         </div>
         <div class="act-timer">
           <div class="act-time mono ${over?'over':''}" data-time="${act.id}">${over?'+':''}${formatTime(over?elapsed-targetSec:elapsed)}</div>
@@ -1611,6 +1618,7 @@ function openNoteEditor(note){
   document.getElementById('notesListMode').style.display='none';
   document.getElementById('notesEditorMode').style.display='';
   document.getElementById('navbarNotes').style.display='none'; // sembunyikan navbar list
+  updateFmtToolbarState();
   setTimeout(()=>document.getElementById('noteTitle').focus(),50);
 }
 function closeNoteEditor(){
@@ -1650,6 +1658,38 @@ document.getElementById('noteTitle').addEventListener('input', ()=>{
 document.getElementById('noteBody').addEventListener('input', ()=>{
   document.getElementById('noteSaveHint').textContent='Menyimpan...';
   clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
+});
+
+/* ---- Format teks: Bold/Italic/Align (pakai execCommand, cukup buat contenteditable simpel) ---- */
+function updateFmtToolbarState(){
+  try{
+    document.getElementById('fmtBoldBtn').classList.toggle('active', document.queryCommandState('bold'));
+    document.getElementById('fmtItalicBtn').classList.toggle('active', document.queryCommandState('italic'));
+    document.getElementById('fmtAlignLeftBtn').classList.toggle('active', document.queryCommandState('justifyLeft'));
+    document.getElementById('fmtAlignCenterBtn').classList.toggle('active', document.queryCommandState('justifyCenter'));
+    document.getElementById('fmtAlignRightBtn').classList.toggle('active', document.queryCommandState('justifyRight'));
+  }catch(e){ /* queryCommandState bisa gak didukung di browser tertentu, aman diabaikan */ }
+}
+function finApplyFmt(cmd){
+  document.getElementById('noteBody').focus();
+  document.execCommand(cmd);
+  updateFmtToolbarState();
+  document.getElementById('noteSaveHint').textContent='Menyimpan...';
+  clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
+}
+document.querySelectorAll('.fmt-btn').forEach(btn=>{
+  // preventDefault pas mousedown biar seleksi teks di noteBody gak ilang duluan sebelum command dijalanin
+  btn.addEventListener('mousedown', e=>e.preventDefault());
+});
+document.getElementById('fmtBoldBtn').addEventListener('click', ()=>finApplyFmt('bold'));
+document.getElementById('fmtItalicBtn').addEventListener('click', ()=>finApplyFmt('italic'));
+document.getElementById('fmtAlignLeftBtn').addEventListener('click', ()=>finApplyFmt('justifyLeft'));
+document.getElementById('fmtAlignCenterBtn').addEventListener('click', ()=>finApplyFmt('justifyCenter'));
+document.getElementById('fmtAlignRightBtn').addEventListener('click', ()=>finApplyFmt('justifyRight'));
+document.getElementById('noteBody').addEventListener('keyup', updateFmtToolbarState);
+document.getElementById('noteBody').addEventListener('mouseup', updateFmtToolbarState);
+document.addEventListener('selectionchange', ()=>{
+  if(document.activeElement===document.getElementById('noteBody')) updateFmtToolbarState();
 });
 document.getElementById('addImageBtn').addEventListener('click', ()=>document.getElementById('imageFileInput').click());
 document.getElementById('imageFileInput').addEventListener('change', e=>{
