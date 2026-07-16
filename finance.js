@@ -58,6 +58,12 @@ function finGetSaldoHistoryForAccount(accountId){ return finGetCacheSaldo()[acco
 function finGetCacheCategories(){ try{ return JSON.parse(localStorage.getItem('fin_cache_categories'))||{}; }catch(e){ return {}; } } // {business:[...]}
 function finSetCacheCategories(data){ localStorage.setItem('fin_cache_categories', JSON.stringify(data)); }
 function finGetCategoriesFor(business){ return finGetCacheCategories()[business]||[]; }
+function finGetCachePanen(){ try{ return JSON.parse(localStorage.getItem('fin_cache_panen'))||[]; }catch(e){ return []; } }
+function finSetCachePanen(data){ localStorage.setItem('fin_cache_panen', JSON.stringify(data)); }
+function finGetCacheSawitRates(){ try{ return JSON.parse(localStorage.getItem('fin_cache_sawit_rates'))||[]; }catch(e){ return []; } }
+function finSetCacheSawitRates(data){ localStorage.setItem('fin_cache_sawit_rates', JSON.stringify(data)); }
+function finGetCacheSawitProfil(){ try{ return JSON.parse(localStorage.getItem('fin_cache_sawit_profil'))||{luasHektar:0,tahunTanam:0,jumlahPohon:0}; }catch(e){ return {luasHektar:0,tahunTanam:0,jumlahPohon:0}; } }
+function finSetCacheSawitProfil(data){ localStorage.setItem('fin_cache_sawit_profil', JSON.stringify(data)); }
 
 /* ---------------- Antrian offline-sync ---------------- */
 function finGetQueue(){ try{ return JSON.parse(localStorage.getItem('fin_queue'))||[]; }catch(e){ return []; } }
@@ -83,6 +89,9 @@ const FIN_ENDPOINT = {
   'acct-saldo-set':'/finance/accounts/saldo/set',
   'cat-add':'/finance/categories/add', 'cat-delete':'/finance/categories/delete',
   'nota-foto-upload':'/finance/eksa/pengeluaran/foto/upload', 'nota-foto-delete':'/finance/eksa/pengeluaran/foto/delete',
+  'panen-add':'/finance/sawit/panen/add', 'panen-delete':'/finance/sawit/panen/delete',
+  'sawit-rate-add':'/finance/sawit/rates/add', 'sawit-rate-delete':'/finance/sawit/rates/delete',
+  'sawit-profil-set':'/finance/sawit/profil/set',
 };
 // dilempar kalau server BENERAN nolak requestnya (misal data gak valid) — beda dari
 // gagal fetch karena offline. Kalau ini yang kejadian, jangan diam-diam dimasukin
@@ -362,6 +371,47 @@ async function finDeleteCategory(business, name){
   catch(e){ finHandleSaveError(e, 'cat-delete', {business, name}); }
 }
 
+/* ---------------- SAWIT: panen harian, riwayat harga TBS, data kebun ---------------- */
+async function finAddPanen(tgl, kg){
+  const entry = { id:finNewId('panen'), tgl, kg:Number(kg) };
+  const rows = finGetCachePanen(); rows.push(entry); rows.sort((a,b)=>a.tgl.localeCompare(b.tgl)); finSetCachePanen(rows);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('panen-add', {vaultId, id:entry.id, tgl, kg:entry.kg}); }
+  catch(e){ finHandleSaveError(e, 'panen-add', {id:entry.id, tgl, kg:entry.kg}); }
+  return entry;
+}
+async function finDeletePanen(id){
+  finSetCachePanen(finGetCachePanen().filter(r=>r.id!==id));
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('panen-delete', {vaultId, id}); }
+  catch(e){ finHandleSaveError(e, 'panen-delete', {id}); }
+}
+async function finAddSawitRate(effectiveFrom, rates){
+  const list = finGetCacheSawitRates();
+  const idx = list.findIndex(r=>r.effectiveFrom===effectiveFrom);
+  const entry = {effectiveFrom, ...rates};
+  if(idx>-1) list[idx]=entry; else list.push(entry);
+  list.sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));
+  finSetCacheSawitRates(list);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('sawit-rate-add', {vaultId, effectiveFrom, rates}); }
+  catch(e){ finHandleSaveError(e, 'sawit-rate-add', {effectiveFrom, rates}); }
+}
+async function finDeleteSawitRate(effectiveFrom){
+  const list = finGetCacheSawitRates();
+  if(list.length<=1){ showToast('Minimal harus ada 1 rate aktif'); return; }
+  finSetCacheSawitRates(list.filter(r=>r.effectiveFrom!==effectiveFrom));
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('sawit-rate-delete', {vaultId, effectiveFrom}); }
+  catch(e){ finHandleSaveError(e, 'sawit-rate-delete', {effectiveFrom}); }
+}
+async function finSetSawitProfil(profil){
+  finSetCacheSawitProfil(profil);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('sawit-profil-set', {vaultId, profil}); }
+  catch(e){ finHandleSaveError(e, 'sawit-profil-set', {profil}); }
+}
+
 /* ---------------- Sinkron penuh dari server ---------------- */
 async function finSyncAll(){
   const vaultId = finGetVaultId(); if(!vaultId) return;
@@ -386,6 +436,12 @@ async function finSyncAll(){
     finSetCacheAccounts(accounts);
     const saldoHist = await finApiPath('/finance/accounts/saldo/list', {vaultId});
     finSetCacheSaldo(saldoHist);
+    const panen = await finApiPath('/finance/sawit/panen/list', {vaultId});
+    finSetCachePanen(panen);
+    const sawitRates = await finApiPath('/finance/sawit/rates/list', {vaultId});
+    finSetCacheSawitRates(sawitRates);
+    const sawitProfil = await finApiPath('/finance/sawit/profil/get', {vaultId});
+    finSetCacheSawitProfil(sawitProfil);
     let cats = await finApiPath('/finance/categories/list', {vaultId, business:'pribadi'});
     if(!cats.length){
       for(const c of ['Gaji','Makan','Transport','Belanja','Tagihan','Lain-lain']) await finAddCategory('pribadi', c);
@@ -468,6 +524,7 @@ function finMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padSt
 function finMonthLabel(d){ return FIN_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
 function finTxInMonth(list, monthKey){ return (list||[]).filter(t=>t.date && t.date.slice(0,7)===monthKey); }
 function finHmInMonth(rows, monthKey){ return (rows||[]).filter(r=>r.tgl && r.tgl.slice(0,7)===monthKey); }
+function finPanenInMonth(rows, monthKey){ return (rows||[]).filter(r=>r.tgl && r.tgl.slice(0,7)===monthKey); }
 function finSumIn(list){ return list.filter(t=>t.type==='in').reduce((s,t)=>s+t.amount,0); }
 function finSumOut(list){ return list.filter(t=>t.type==='out').reduce((s,t)=>s+t.amount,0); }
 
@@ -499,6 +556,22 @@ function finEksaUnitMonthNet(unitId, monthKey){
   return {pendapatan, gajiOperator, totalHM, hariKerja, rate:r};
 }
 
+// Pendapatan bersih hasil panen Sawit bulan tertentu (belum dikurangi pengeluaran lain —
+// itu digabung di finBusinessMonthNet, sama filosofinya kayak Eksa).
+function finSawitRateForMonth(monthKey){ return finRateForMonth(finGetCacheSawitRates(), monthKey); }
+function finSawitMonthNet(monthKey){
+  const rates = finGetCacheSawitRates();
+  const rate = rates.length ? finSawitRateForMonth(monthKey) : null;
+  const panenRows = finPanenInMonth(finGetCachePanen(), monthKey);
+  const totalKg = finFmtN(panenRows.reduce((s,r)=>s+r.kg,0));
+  if(!rate) return {totalKg, pendapatanKotor:0, pendapatanBersih:0, upahPanen:0, rate:null};
+  const pendapatanKotor = totalKg * rate.hargaPerKg;
+  const setelahPotongan = pendapatanKotor * (1 - (rate.potonganPercent||0)/100);
+  const pendapatanBersih = setelahPotongan * (1 - (rate.pajakPercent||0)/100);
+  const upahPanen = totalKg * (rate.upahPanenPerKg||0);
+  return {totalKg, pendapatanKotor, pendapatanBersih, upahPanen, rate};
+}
+
 // Laba/rugi bersih 1 bulan untuk 1 bisnis (Eksa = jumlah semua unit dikurangi pengeluaran bareng; yang lain simpel masuk-keluar)
 function finBusinessMonthNet(business, monthKey){
   if(business==='rental_eksa'){
@@ -512,6 +585,13 @@ function finBusinessMonthNet(business, monthKey){
     const pengeluaran = finSumOut(tx) - finSumIn(tx);
     const net = pendapatan - gajiOperator - pengeluaran;
     return {pendapatan, gajiOperator, pengeluaran, net, totalHM:finFmtN(totalHM), hariKerja};
+  }
+  if(business==='sawit'){
+    const r = finSawitMonthNet(monthKey);
+    const tx = finTxInMonth((finGetCacheTx().sawit||[]), monthKey);
+    const masuk = r.pendapatanBersih + finSumIn(tx);
+    const keluar = r.upahPanen + finSumOut(tx);
+    return {masuk, keluar, net: masuk-keluar, totalKg:r.totalKg, rate:r.rate};
   }
   const tx = finTxInMonth((finGetCacheTx()[business]||[]), monthKey);
   const masuk = finSumIn(tx), keluar = finSumOut(tx);
@@ -598,8 +678,11 @@ let finEditingRate = null; // effectiveFrom kalau lagi edit rate
 let finEditingAccount = null; // account id kalau lagi edit akun
 let finPribadiSearch = ''; // query pencarian transaksi Pribadi
 let finPribadiShowAll = false; // true = tampilin semua transaksi (semua bulan), bukan cuma bulan yang lagi dilihat
-let finEksaExpSearch = ''; // query pencarian pengeluaran Eksa
-let finEksaExpShowAll = false; // true = tampilin semua pengeluaran (semua bulan)
+let finExpSearch = {rental_eksa:'', sawit:''}; // query pencarian Pengeluaran, per-business (Eksa & Sawit reuse sheet yang sama)
+let finExpShowAll = {rental_eksa:false, sawit:false}; // toggle 'semua data' Pengeluaran, per-business
+let finSawitSubTab = 'ringkasan';
+let finSawitPanenLastDate = null; // sama pola kayak finHmLastDate, biar input panen harian berturut-turut gampang
+let finEditingSawitRate = null; // effectiveFrom kalau lagi edit rate Sawit
 
 function renderKeuangan(){
   finRenderQueueBadge();
@@ -633,6 +716,7 @@ function renderKeuanganBody(){
   if(!finGetVaultId()) return;
   if(finActiveBiz==='ringkasan') renderFinRingkasan();
   else if(finActiveBiz==='rental_eksa') renderFinEksa();
+  else if(finActiveBiz==='sawit') renderFinSawit();
   else if(finActiveBiz==='pribadi') renderFinPribadi();
   else renderFinSimpleBusiness(finActiveBiz);
 }
@@ -1015,6 +1099,7 @@ document.getElementById('finTxDeleteBtn').addEventListener('click', async ()=>{
 
 /* ---------------- SHEET PENGELUARAN RENTAL EKSA (rincian barang + foto nota) ---------------- */
 let finEksaExpEditingTx = null;
+let finEksaExpBusiness = 'rental_eksa'; // business yang lagi diedit di sheet Pengeluaran ('rental_eksa' atau 'sawit')
 let finEksaExpItems = [];
 let finEksaExpFotos = []; // {id, dataUrl}
 let finEksaExpFotosRemoved = [];
@@ -1076,7 +1161,8 @@ function finEksaExpRenderPhotoGrid(){
   const addBtn = document.getElementById('finEksaExpAddPhotoBtn');
   if(addBtn) addBtn.addEventListener('click', ()=>document.getElementById('finEksaExpPhotoInput').click());
 }
-function openFinEksaExpSheet(tx){
+function openFinEksaExpSheet(business, tx){
+  finEksaExpBusiness = business;
   finEksaExpEditingTx = tx || null;
   finEksaExpFotosRemoved = [];
   document.getElementById('finEksaExpSheetTitle').textContent = tx ? 'Edit Pengeluaran' : 'Tambah Pengeluaran';
@@ -1143,8 +1229,8 @@ document.getElementById('finEksaExpSaveBtn').addEventListener('click', async ()=
   const notaFotoIds = finEksaExpFotos.map(f=>f.id);
   const partial = {type:'out', amount, category, date, note, account, items, notaFotoIds};
 
-  if(finEksaExpEditingTx) await finUpdateTx('rental_eksa', {...finEksaExpEditingTx, ...partial});
-  else await finAddTx('rental_eksa', partial);
+  if(finEksaExpEditingTx) await finUpdateTx(finEksaExpBusiness, {...finEksaExpEditingTx, ...partial});
+  else await finAddTx(finEksaExpBusiness, partial);
 
   // upload semua foto yang lagi nempel (idempotent per fotoId, jadi yang lama gak masalah di-upload ulang)
   finEksaExpFotos.forEach(f=>{ finUploadNotaFoto(f.id, f.dataUrl); });
@@ -1154,15 +1240,15 @@ document.getElementById('finEksaExpSaveBtn').addEventListener('click', async ()=
 
   document.getElementById('finEksaExpOverlay').classList.remove('show');
   showToast('Tersimpan');
-  renderFinEksa();
+  if(finEksaExpBusiness==='sawit') renderFinSawit(); else renderFinEksa();
 });
 document.getElementById('finEksaExpDeleteBtn').addEventListener('click', async ()=>{
   if(!finEksaExpEditingTx) return;
   if(!confirm('Hapus pengeluaran ini?')) return;
-  await finDeleteTx('rental_eksa', finEksaExpEditingTx.id);
+  await finDeleteTx(finEksaExpBusiness, finEksaExpEditingTx.id);
   document.getElementById('finEksaExpOverlay').classList.remove('show');
   showToast('Dihapus');
-  renderFinEksa();
+  if(finEksaExpBusiness==='sawit') renderFinSawit(); else renderFinEksa();
 });
 
 /* ---------------- RENTAL EKSA ---------------- */
@@ -1321,11 +1407,14 @@ function renderFinEksaInput(body){
   });
 }
 
-function renderFinEksaPengeluaran(body){
+function renderFinEksaPengeluaran(body){ renderFinPengeluaranRincian(body, 'rental_eksa'); }
+function renderFinSawitPengeluaran(body){ renderFinPengeluaranRincian(body, 'sawit'); }
+
+function renderFinPengeluaranRincian(body, business){
   body.innerHTML = `
     <div class="fin-search-row">
-      <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="finEksaExpSearchInput" placeholder="Cari barang, catatan, tanggal..." value="${escapeHtml(finEksaExpSearch)}"></div>
-      <button type="button" class="fin-toggle-chip ${finEksaExpShowAll?'active':''}" id="finEksaExpShowAllBtn">${finEksaExpShowAll?'Semua':'Bulan Ini'}</button>
+      <div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="finEksaExpSearchInput" placeholder="Cari barang, catatan, tanggal..." value="${escapeHtml(finExpSearch[business]||'')}"></div>
+      <button type="button" class="fin-toggle-chip ${finExpShowAll[business]?'active':''}" id="finEksaExpShowAllBtn">${finExpShowAll[business]?'Semua':'Bulan Ini'}</button>
     </div>
     <div id="finEksaExpMonthNavWrap"></div>
     <div id="finEksaExpListArea"></div>
@@ -1333,7 +1422,7 @@ function renderFinEksaPengeluaran(body){
 
   const monthNavWrap = body.querySelector('#finEksaExpMonthNavWrap');
   function renderMonthNavArea(){
-    if(finEksaExpShowAll){
+    if(finExpShowAll[business]){
       monthNavWrap.innerHTML = `<div class="fin-month-nav"><div class="fin-month-label">Semua Pengeluaran</div></div>`;
     } else {
       monthNavWrap.innerHTML = finMonthNavHtml();
@@ -1345,14 +1434,14 @@ function renderFinEksaPengeluaran(body){
     renderMonthNavArea();
     const monthKey = finMonthKey(finMonthCursor);
     const cache = finGetCacheTx();
-    const base = finEksaExpShowAll ? (cache.rental_eksa||[]) : finTxInMonth(cache.rental_eksa||[], monthKey);
-    const txAll = base.filter(t=>finTxMatchesQuery(t, finEksaExpSearch)).sort((a,b)=>b.date.localeCompare(a.date));
+    const base = finExpShowAll[business] ? (cache[business]||[]) : finTxInMonth(cache[business]||[], monthKey);
+    const txAll = base.filter(t=>finTxMatchesQuery(t, finExpSearch[business])).sort((a,b)=>b.date.localeCompare(a.date));
     const keluar = finSumOut(txAll);
     const listArea = body.querySelector('#finEksaExpListArea');
     listArea.innerHTML = `<div class="fin-total-card" style="margin-bottom:14px;">
-        <div class="fin-total-label">Total Pengeluaran${finEksaExpShowAll?' (Semua)':' Bulan Ini'}</div><div class="fin-total-val" style="color:var(--danger);">${finFmt(keluar)}</div>
+        <div class="fin-total-label">Total Pengeluaran${finExpShowAll[business]?' (Semua)':' Bulan Ini'}</div><div class="fin-total-val" style="color:var(--danger);">${finFmt(keluar)}</div>
       </div>` +
-      (txAll.length ? `<div id="finTxList"></div>` : `<div class="fin-empty">${finEksaExpSearch ? 'Gak ada pengeluaran yang cocok.' : (finEksaExpShowAll ? 'Belum ada pengeluaran sama sekali.' : 'Belum ada pengeluaran tambahan bulan ini.<br>Tap tombol + buat nambah (perawatan, sparepart, dll).')}</div>`);
+      (txAll.length ? `<div id="finTxList"></div>` : `<div class="fin-empty">${finExpSearch[business] ? 'Gak ada pengeluaran yang cocok.' : (finExpShowAll[business] ? 'Belum ada pengeluaran sama sekali.' : 'Belum ada pengeluaran tambahan bulan ini.<br>Tap tombol + buat nambah (perawatan, sparepart, dll).')}</div>`);
 
     if(txAll.length){
       const listEl = listArea.querySelector('#finTxList');
@@ -1379,7 +1468,7 @@ function renderFinEksaPengeluaran(body){
             <div class="fin-tx-cat">${escapeHtml(judul)}</div>
             ${rincianHtml}
             ${thumbs ? `<div class="fin-item-thumb-row">${thumbs}</div>` : ''}
-            <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}${finEksaExpShowAll?' · '+finMonthLabel(finParseMonthKey(t.date.slice(0,7))):''}</div>
+            <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}${finExpShowAll[business]?' · '+finMonthLabel(finParseMonthKey(t.date.slice(0,7))):''}</div>
           </div>
           <div class="fin-tx-amt out">-${finFmt(t.amount)}</div>
         </div>
@@ -1390,7 +1479,7 @@ function renderFinEksaPengeluaran(body){
           const viewEl = e.target.closest('[data-view]');
           if(viewEl){ window.open(fcache[viewEl.dataset.view], '_blank'); return; }
           const tx = txAll.find(t=>t.id===row.dataset.id);
-          openFinEksaExpSheet(tx);
+          openFinEksaExpSheet(business, tx);
         });
       });
 
@@ -1404,15 +1493,15 @@ function renderFinEksaPengeluaran(body){
   updateExpList();
 
   const searchInput = body.querySelector('#finEksaExpSearchInput');
-  searchInput.addEventListener('input', ()=>{ finEksaExpSearch = searchInput.value; updateExpList(); });
+  searchInput.addEventListener('input', ()=>{ finExpSearch[business] = searchInput.value; updateExpList(); });
   body.querySelector('#finEksaExpShowAllBtn').addEventListener('click', ()=>{
-    finEksaExpShowAll = !finEksaExpShowAll;
-    renderFinEksa(); // rebuild penuh biar tombol & label ke-refresh
+    finExpShowAll[business] = !finExpShowAll[business];
+    renderKeuanganBody();
   });
 
   const fab = document.createElement('button');
   fab.className='fin-fab'; fab.innerHTML='+';
-  fab.addEventListener('click', ()=>openFinEksaExpSheet(null));
+  fab.addEventListener('click', ()=>openFinEksaExpSheet(business, null));
   body.appendChild(fab);
 }
 
@@ -1557,4 +1646,206 @@ document.getElementById('finRateDeleteBtn').addEventListener('click', async ()=>
   document.getElementById('finRateOverlay').classList.remove('show');
   showToast('Rate dihapus');
   renderFinEksa();
+});
+
+/* ---------------- SAWIT: kerangka halaman (Ringkasan|Panen|Pengeluaran|Rate) ---------------- */
+function renderFinSawit(){
+  const wrap = document.getElementById('keuanganContent'); wrap.innerHTML='';
+
+  const backWrap = document.createElement('div'); backWrap.innerHTML = finBackLinkHtml();
+  wrap.appendChild(backWrap);
+  finWireBackLink();
+
+  const sub = document.createElement('div');
+  sub.className='segmented'; sub.style.marginBottom='14px';
+  sub.innerHTML = ['ringkasan','panen','pengeluaran','rate'].map(t=>{
+    const label = {ringkasan:'Ringkasan', panen:'Panen', pengeluaran:'Pengeluaran', rate:'Rate'}[t];
+    return `<button type="button" class="${finSawitSubTab===t?'active':''}" data-sub="${t}">${label}</button>`;
+  }).join('');
+  wrap.appendChild(sub);
+  sub.querySelectorAll('button').forEach(b=>{
+    b.addEventListener('click', ()=>{ finSawitSubTab = b.dataset.sub; renderFinSawit(); });
+  });
+
+  const body = document.createElement('div');
+  wrap.appendChild(body);
+
+  if(finSawitSubTab==='ringkasan') renderFinSawitRingkasan(body);
+  else if(finSawitSubTab==='panen') renderFinSawitPanenTab(body);
+  else if(finSawitSubTab==='pengeluaran') renderFinSawitPengeluaran(body);
+  else renderFinSawitRateTab(body);
+}
+
+function renderFinSawitRingkasan(body){
+  const monthKey = finMonthKey(finMonthCursor);
+  const profil = finGetCacheSawitProfil();
+  body.innerHTML = `
+    <div class="fin-report-card" id="finSawitProfilCard" style="cursor:pointer;">
+      <div class="fin-report-note" style="margin:0 0 4px; font-weight:700; color:var(--ink);">Data Kebun <span style="font-weight:400; color:var(--ink-soft); font-size:12px;">— ketuk buat edit</span></div>
+      <div class="fin-report-note">${profil.luasHektar ? finFmtN(profil.luasHektar)+' ha' : 'Luas belum diisi'}${profil.tahunTanam?' · tanam '+profil.tahunTanam:''}${profil.jumlahPohon?' · '+profil.jumlahPohon+' pohon':''}</div>
+    </div>
+    <div id="finSawitMonthNavWrap"></div>
+    <div id="finSawitReportCard"></div>
+  `;
+  document.getElementById('finSawitProfilCard').addEventListener('click', openFinSawitProfilSheet);
+
+  document.getElementById('finSawitMonthNavWrap').innerHTML = finMonthNavHtml();
+  finWireMonthNav(renderFinSawit);
+
+  const cardWrap = document.getElementById('finSawitReportCard');
+  const r = finSawitMonthNet(monthKey);
+  if(!r.rate){
+    cardWrap.innerHTML = '<div class="fin-empty">Rate harga TBS belum di-setup. Buka tab Rate dulu.</div>';
+    return;
+  }
+  const tx = finTxInMonth((finGetCacheTx().sawit||[]), monthKey);
+  const pemasukanLain = finSumIn(tx), pengeluaranLain = finSumOut(tx);
+  const labaBersih = r.pendapatanBersih + pemasukanLain - r.upahPanen - pengeluaranLain;
+  cardWrap.innerHTML = `
+    <div class="fin-report-card">
+      <div class="fin-report-row"><span>Total Panen</span><span>${r.totalKg} kg</span></div>
+      <div class="fin-report-row"><span>Pendapatan Kotor</span><span>${finFmt(r.pendapatanKotor)}</span></div>
+      <div class="fin-report-row"><span>Pendapatan Bersih</span><span>${finFmt(r.pendapatanBersih)}</span></div>
+      <div class="fin-report-row"><span>Upah Panen</span><span>-${finFmt(r.upahPanen)}</span></div>
+      <div class="fin-report-note">rate berlaku sejak ${r.rate.effectiveFrom} · Rp${(r.rate.hargaPerKg||0).toLocaleString('id-ID')}/kg · potongan ${r.rate.potonganPercent||0}% · pajak ${r.rate.pajakPercent||0}%</div>
+    </div>
+    <div class="fin-report-card">
+      ${pemasukanLain ? `<div class="fin-report-row"><span>Pemasukan Lain</span><span>+${finFmt(pemasukanLain)}</span></div>` : ''}
+      <div class="fin-report-row"><span>Pengeluaran Lain (pupuk/gaji/dll)</span><span>-${finFmt(pengeluaranLain)}</span></div>
+      <div class="fin-report-row"><span>Laba Bersih</span><span style="color:${labaBersih>=0?'var(--positive)':'var(--danger)'}">${finFmt(labaBersih)}</span></div>
+    </div>
+  `;
+}
+
+function renderFinSawitPanenTab(body){
+  const rows = finGetCachePanen();
+  const today = finSawitPanenLastDate || finTodayStr();
+  body.innerHTML = `
+    <div class="fin-section-label">Input Panen Harian</div>
+    <div class="field"><label>Tanggal</label><input type="date" id="finSawitPanenTgl" value="${today}"></div>
+    <div class="field"><label>Berat TBS (kg)</label><input type="number" step="0.1" id="finSawitPanenKg" placeholder="0"></div>
+    <button class="btn primary" id="finSawitPanenSaveBtn" style="width:100%; margin-bottom:20px;">Simpan</button>
+    <div class="field-hint" style="margin-bottom:10px;">Riwayat panen terakhir</div>
+    <div id="finSawitPanenHistory"></div>
+  `;
+  document.getElementById('finSawitPanenSaveBtn').addEventListener('click', async ()=>{
+    const tgl = document.getElementById('finSawitPanenTgl').value;
+    const kg = parseFloat(document.getElementById('finSawitPanenKg').value);
+    if(!tgl){ showToast('Pilih tanggal dulu'); return; }
+    if(isNaN(kg) || kg<=0){ showToast('Isi berat panen dulu'); return; }
+    await finAddPanen(tgl, kg);
+    // inget tanggal ini biar gampang lanjut input panen hari berikutnya, sama pola kayak HM Eksa
+    finSawitPanenLastDate = finAddDaysStr(tgl, 1);
+    showToast('Tersimpan');
+    renderFinSawit();
+  });
+
+  const histEl = document.getElementById('finSawitPanenHistory');
+  const recent = [...rows].reverse().slice(0,15);
+  histEl.innerHTML = recent.length ? recent.map(r=>`
+    <div class="fin-hm-row" data-id="${r.id}">
+      <div><div class="fin-hm-date">${r.tgl.split('-').reverse().join('/')}</div></div>
+      <div style="display:flex; align-items:center; gap:10px;"><div class="fin-hm-dur">${finFmtN(r.kg)} kg</div><button class="del" data-del="${r.id}" style="background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink-soft);cursor:pointer;padding:4px 8px;font-size:12px;">✕</button></div>
+    </div>
+  `).join('') : '<div class="fin-empty">Belum ada data panen.</div>';
+  histEl.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!confirm('Hapus data panen ini?')) return;
+      await finDeletePanen(btn.dataset.del);
+      showToast('Dihapus');
+      renderFinSawit();
+    });
+  });
+}
+
+function renderFinSawitRateTab(body){
+  const rates = [...finGetCacheSawitRates()].sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
+  body.innerHTML = `<div id="finSawitRateList"></div><button class="btn primary" id="finSawitRateAddBtn" style="width:100%; margin-top:8px;">+ Tambah Rate Baru</button>`;
+  const listEl = document.getElementById('finSawitRateList');
+  listEl.innerHTML = rates.length ? rates.map(r=>`
+    <div class="fin-rate-card" data-from="${r.effectiveFrom}">
+      <div class="fin-rate-title"><span>Berlaku sejak ${r.effectiveFrom}</span><span style="color:var(--ink-soft); font-size:12px;">Edit ›</span></div>
+      <div class="fin-rate-detail">
+        Rp${(r.hargaPerKg||0).toLocaleString('id-ID')}/kg · Potongan ${r.potonganPercent||0}% · Pajak ${r.pajakPercent||0}%<br>
+        Upah panen borongan: Rp${(r.upahPanenPerKg||0).toLocaleString('id-ID')}/kg
+      </div>
+    </div>
+  `).join('') : '<div class="fin-empty">Belum ada rate harga TBS.</div>';
+  listEl.querySelectorAll('[data-from]').forEach(card=>{
+    card.addEventListener('click', ()=>openFinSawitRateSheet(rates.find(r=>r.effectiveFrom===card.dataset.from)));
+  });
+  document.getElementById('finSawitRateAddBtn').addEventListener('click', ()=>openFinSawitRateSheet(null));
+}
+
+function finPopulateSawitRateMonthSelects(selectedMonthKey){
+  const bulanSel = document.getElementById('finSawitRateFromBulan');
+  const tahunSel = document.getElementById('finSawitRateFromTahun');
+  bulanSel.innerHTML = FIN_MONTHS.map((m,i)=>`<option value="${String(i+1).padStart(2,'0')}">${m}</option>`).join('');
+  const thisYear = new Date().getFullYear();
+  const years = []; for(let y=thisYear-2; y<=thisYear+3; y++) years.push(y);
+  tahunSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  const [y, m] = selectedMonthKey.split('-');
+  tahunSel.value = y; bulanSel.value = m;
+}
+
+function openFinSawitRateSheet(rate){
+  finEditingSawitRate = rate ? rate.effectiveFrom : null;
+  document.getElementById('finSawitRateSheetTitle').textContent = rate ? 'Edit Rate' : 'Tambah Rate Baru';
+  const nextMonth = new Date(finMonthCursor.getFullYear(), finMonthCursor.getMonth()+1, 1);
+  finPopulateSawitRateMonthSelects(rate ? rate.effectiveFrom : finMonthKey(nextMonth));
+  document.getElementById('finSawitRateFromBulan').disabled = !!rate;
+  document.getElementById('finSawitRateFromTahun').disabled = !!rate;
+  document.getElementById('finSawitRateHarga').value = rate ? rate.hargaPerKg : '';
+  document.getElementById('finSawitRatePotongan').value = rate ? rate.potonganPercent : 0;
+  document.getElementById('finSawitRatePajak').value = rate ? rate.pajakPercent : 0;
+  document.getElementById('finSawitRateUpahPanen').value = rate ? rate.upahPanenPerKg : '';
+  document.getElementById('finSawitRateDeleteBtn').style.display = rate ? '' : 'none';
+  document.getElementById('finSawitRateOverlay').classList.add('show');
+}
+document.getElementById('finSawitRateCancelBtn').addEventListener('click', ()=>document.getElementById('finSawitRateOverlay').classList.remove('show'));
+document.getElementById('finSawitRateOverlay').addEventListener('click', e=>{ if(e.target.id==='finSawitRateOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('finSawitRateSaveBtn').addEventListener('click', async ()=>{
+  const effectiveFrom = document.getElementById('finSawitRateFromTahun').value+'-'+document.getElementById('finSawitRateFromBulan').value;
+  const hargaPerKg = Number(document.getElementById('finSawitRateHarga').value)||0;
+  if(hargaPerKg<=0){ showToast('Isi harga TBS per kg dulu'); return; }
+  const rates = {
+    hargaPerKg,
+    potonganPercent: Number(document.getElementById('finSawitRatePotongan').value)||0,
+    pajakPercent: Number(document.getElementById('finSawitRatePajak').value)||0,
+    upahPanenPerKg: Number(document.getElementById('finSawitRateUpahPanen').value)||0,
+  };
+  await finAddSawitRate(effectiveFrom, rates);
+  document.getElementById('finSawitRateOverlay').classList.remove('show');
+  showToast('Rate tersimpan');
+  renderFinSawit();
+});
+document.getElementById('finSawitRateDeleteBtn').addEventListener('click', async ()=>{
+  if(!finEditingSawitRate) return;
+  if(!confirm('Hapus rate ini?')) return;
+  await finDeleteSawitRate(finEditingSawitRate);
+  document.getElementById('finSawitRateOverlay').classList.remove('show');
+  showToast('Rate dihapus');
+  renderFinSawit();
+});
+
+function openFinSawitProfilSheet(){
+  const p = finGetCacheSawitProfil();
+  document.getElementById('finSawitProfilLuas').value = p.luasHektar || '';
+  document.getElementById('finSawitProfilTahun').value = p.tahunTanam || '';
+  document.getElementById('finSawitProfilPohon').value = p.jumlahPohon || '';
+  document.getElementById('finSawitProfilOverlay').classList.add('show');
+}
+document.getElementById('finSawitProfilCancelBtn').addEventListener('click', ()=>document.getElementById('finSawitProfilOverlay').classList.remove('show'));
+document.getElementById('finSawitProfilOverlay').addEventListener('click', e=>{ if(e.target.id==='finSawitProfilOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('finSawitProfilSaveBtn').addEventListener('click', async ()=>{
+  const profil = {
+    luasHektar: Number(document.getElementById('finSawitProfilLuas').value)||0,
+    tahunTanam: Number(document.getElementById('finSawitProfilTahun').value)||0,
+    jumlahPohon: Number(document.getElementById('finSawitProfilPohon').value)||0,
+  };
+  await finSetSawitProfil(profil);
+  document.getElementById('finSawitProfilOverlay').classList.remove('show');
+  showToast('Tersimpan');
+  renderFinSawit();
 });
