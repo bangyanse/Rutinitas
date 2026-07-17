@@ -114,6 +114,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .chev{color:var(--ink-soft); flex:0 0 auto;}
 .chev svg{width:14px;height:14px;}
 
+.note-row{border-bottom:none;}
 .note-title{font-size:15.5px; font-weight:600;}
 .note-snippet{font-size:13px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;}
 .note-date{font-size:11.5px; color:var(--ink-soft); margin-top:3px;}
@@ -126,6 +127,15 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .editor-toolbar button.fmt-btn{padding:8px 12px;}
 .editor-toolbar button.fmt-btn.active{background:var(--ig-gradient); color:#fff;}
 .editor-toolbar .toolbar-sep{width:1px; align-self:stretch; background:var(--line); margin:2px 4px;}
+.editor-toolbar select.fmt-select{border:none; background:var(--surface-2); color:var(--ink); padding:9px 10px; border-radius:14px; font-size:13px; font-weight:600; cursor:pointer;}
+#noteBody h1{font-size:22px; font-weight:700; margin:14px 0 6px;}
+#noteBody h2{font-size:17.5px; font-weight:700; margin:12px 0 5px;}
+#noteBody ul, #noteBody ol{padding-left:22px; margin:8px 0;}
+#noteBody li{margin:3px 0;}
+#noteBody .chk-line{display:flex; align-items:flex-start; gap:8px; margin:5px 0;}
+#noteBody .chk-line input.chk-box{margin-top:3px; width:18px; height:18px; flex-shrink:0; accent-color:var(--accent);}
+#noteBody .chk-line.checked .chk-text{color:var(--ink-soft); text-decoration:line-through;}
+#noteBody .chk-text{flex:1; min-width:0;}
 #noteTitle{width:100%; border:none; background:none; font-size:26px; font-weight:800; color:var(--ink); padding:4px 2px 6px; outline:none;}
 .editor-toolbar{display:flex; align-items:center; gap:8px; padding:8px 0 12px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin-bottom:12px;}
 #noteBody{width:100%; min-height:340px; border:none; outline:none; background:none; color:var(--ink); font-size:15px; line-height:1.65; padding:2px;}
@@ -418,11 +428,24 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
       <main>
         <input type="text" id="noteTitle" placeholder="Judul">
         <div class="editor-toolbar">
+          <select id="fmtBlockSelect" class="fmt-select">
+            <option value="P">Teks Biasa</option>
+            <option value="H1">Judul</option>
+            <option value="H2">Subjudul</option>
+          </select>
+          <div class="toolbar-sep"></div>
           <button type="button" id="fmtBoldBtn" class="fmt-btn" style="font-weight:800; font-size:15px;">B</button>
           <button type="button" id="fmtItalicBtn" class="fmt-btn" style="font-style:italic; font-size:15px;">I</button>
+          <button type="button" id="fmtUnderlineBtn" class="fmt-btn" style="text-decoration:underline; font-size:15px;">U</button>
+          <button type="button" id="fmtStrikeBtn" class="fmt-btn" style="text-decoration:line-through; font-size:15px;">S</button>
+          <div class="toolbar-sep"></div>
           <button type="button" id="fmtAlignLeftBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>
           <button type="button" id="fmtAlignCenterBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>
           <button type="button" id="fmtAlignRightBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>
+          <div class="toolbar-sep"></div>
+          <button type="button" id="fmtBulletBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="5" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="18" r="1.4" fill="currentColor" stroke="none"/><path d="M10 6h10M10 12h10M10 18h10"/></svg></button>
+          <button type="button" id="fmtNumberBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 5v3M4 5h1M4 13c0-.8.6-1.4 1.4-1.4S6.8 12.2 6.8 13c0 .5-.3.9-.6 1.2L4 16.5h2.8" stroke-width="1.6"/></svg></button>
+          <button type="button" id="fmtChecklistBtn" class="fmt-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="6" height="6" rx="1.2"/><path d="M4.5 7.5l1 1 2-2.2"/><path d="M12 7.5h9"/><rect x="3" y="14.5" width="6" height="6" rx="1.2"/><path d="M12 17.5h9"/></svg></button>
           <div class="toolbar-sep"></div>
           <button id="addImageBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Gambar</button>
           <button id="recordBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span id="recordBtnLabel">Rekam</span></button>
@@ -1660,19 +1683,25 @@ document.getElementById('noteBody').addEventListener('input', ()=>{
   clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
 });
 
-/* ---- Format teks: Bold/Italic/Align (pakai execCommand, cukup buat contenteditable simpel) ---- */
+/* ---- Format teks: Bold/Italic/Underline/Strike/Align/List/Heading (pakai execCommand, cukup buat contenteditable simpel) ---- */
 function updateFmtToolbarState(){
   try{
     document.getElementById('fmtBoldBtn').classList.toggle('active', document.queryCommandState('bold'));
     document.getElementById('fmtItalicBtn').classList.toggle('active', document.queryCommandState('italic'));
+    document.getElementById('fmtUnderlineBtn').classList.toggle('active', document.queryCommandState('underline'));
+    document.getElementById('fmtStrikeBtn').classList.toggle('active', document.queryCommandState('strikeThrough'));
     document.getElementById('fmtAlignLeftBtn').classList.toggle('active', document.queryCommandState('justifyLeft'));
     document.getElementById('fmtAlignCenterBtn').classList.toggle('active', document.queryCommandState('justifyCenter'));
     document.getElementById('fmtAlignRightBtn').classList.toggle('active', document.queryCommandState('justifyRight'));
+    document.getElementById('fmtBulletBtn').classList.toggle('active', document.queryCommandState('insertUnorderedList'));
+    document.getElementById('fmtNumberBtn').classList.toggle('active', document.queryCommandState('insertOrderedList'));
+    const blockTag = (document.queryCommandValue('formatBlock')||'').toUpperCase();
+    document.getElementById('fmtBlockSelect').value = (blockTag==='H1'||blockTag==='H2') ? blockTag : 'P';
   }catch(e){ /* queryCommandState bisa gak didukung di browser tertentu, aman diabaikan */ }
 }
-function finApplyFmt(cmd){
+function finApplyFmt(cmd, val){
   document.getElementById('noteBody').focus();
-  document.execCommand(cmd);
+  document.execCommand(cmd, false, val);
   updateFmtToolbarState();
   document.getElementById('noteSaveHint').textContent='Menyimpan...';
   clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
@@ -1683,9 +1712,35 @@ document.querySelectorAll('.fmt-btn').forEach(btn=>{
 });
 document.getElementById('fmtBoldBtn').addEventListener('click', ()=>finApplyFmt('bold'));
 document.getElementById('fmtItalicBtn').addEventListener('click', ()=>finApplyFmt('italic'));
+document.getElementById('fmtUnderlineBtn').addEventListener('click', ()=>finApplyFmt('underline'));
+document.getElementById('fmtStrikeBtn').addEventListener('click', ()=>finApplyFmt('strikeThrough'));
 document.getElementById('fmtAlignLeftBtn').addEventListener('click', ()=>finApplyFmt('justifyLeft'));
 document.getElementById('fmtAlignCenterBtn').addEventListener('click', ()=>finApplyFmt('justifyCenter'));
 document.getElementById('fmtAlignRightBtn').addEventListener('click', ()=>finApplyFmt('justifyRight'));
+document.getElementById('fmtBulletBtn').addEventListener('click', ()=>finApplyFmt('insertUnorderedList'));
+document.getElementById('fmtNumberBtn').addEventListener('click', ()=>finApplyFmt('insertOrderedList'));
+document.getElementById('fmtChecklistBtn').addEventListener('mousedown', e=>e.preventDefault());
+document.getElementById('fmtChecklistBtn').addEventListener('click', ()=>{
+  document.getElementById('noteBody').focus();
+  // \u200b (zero-width space) biar span-nya gak kosong total, jadi kursor bisa langsung
+  // ditaruh di dalemnya abis insert (browser naruh kursor persis setelah konten terakhir yang di-insert)
+  document.execCommand('insertHTML', false, '<div class="chk-line"><input type="checkbox" class="chk-box" contenteditable="false"><span class="chk-text">\u200b</span></div>');
+  document.getElementById('noteSaveHint').textContent='Menyimpan...';
+  clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
+});
+// checkbox dibikin dinamis (nambah kapan aja), jadi listener-nya pakai event delegation di parent
+document.getElementById('noteBody').addEventListener('change', e=>{
+  if(!e.target.classList || !e.target.classList.contains('chk-box')) return;
+  const line = e.target.closest('.chk-line'); if(!line) return;
+  if(e.target.checked){ line.classList.add('checked'); e.target.setAttribute('checked','checked'); }
+  else { line.classList.remove('checked'); e.target.removeAttribute('checked'); }
+  document.getElementById('noteSaveHint').textContent='Menyimpan...';
+  clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
+});
+document.getElementById('fmtBlockSelect').addEventListener('mousedown', e=>e.preventDefault());
+document.getElementById('fmtBlockSelect').addEventListener('change', e=>{
+  finApplyFmt('formatBlock', e.target.value==='P' ? 'P' : e.target.value);
+});
 document.getElementById('noteBody').addEventListener('keyup', updateFmtToolbarState);
 document.getElementById('noteBody').addEventListener('mouseup', updateFmtToolbarState);
 document.addEventListener('selectionchange', ()=>{
