@@ -569,16 +569,12 @@ function finAddDaysStr(dateStr, n){
 let finHmLastDate = null;
 function finFmtN(n){ return parseFloat(parseFloat(n).toFixed(1)); }
 function finMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-// Buat tanggal transaksi konfirmasi pendapatan/gaji Eksa: kalau bulan yang dikonfirmasi masih
-// bulan berjalan, pakai hari ini; kalau udah lewat (dikonfirmasi telat), pakai tanggal terakhir
-// bulan itu — biar transaksinya tetap kehitung di laporan bulan yang bener, bukan nyasar ke
-// bulan saat ini.
+// Tanggal transaksi konfirmasi pendapatan/gaji Eksa = tanggal HARI INI (pas tombol dipencet),
+// bukan tanggal bulan yang lagi dilaporkan. Sengaja gini: kalau HM bulan Juli baru beneran
+// dibayar tanggal 3 bulan Agustus, transaksinya harus nyangkut di laporan Agustus (bulan
+// duitnya beneran pindah tangan), bukan "dipaksa" balik ke Juli.
 function finConfirmDateForMonth(monthKey){
-  const today = finTodayStr();
-  if(today.slice(0,7)===monthKey) return today;
-  const [y,m] = monthKey.split('-').map(Number);
-  const last = new Date(y, m, 0);
-  return last.getFullYear()+'-'+String(last.getMonth()+1).padStart(2,'0')+'-'+String(last.getDate()).padStart(2,'0');
+  return finTodayStr();
 }
 function finMonthLabel(d){ return FIN_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
 function finTxInMonth(list, monthKey){ return (list||[]).filter(t=>t.date && t.date.slice(0,7)===monthKey); }
@@ -755,15 +751,18 @@ let finTxItems = []; // rincian barang opsional di sheet transaksi biasa (Pribad
 function finTxAddItemRow(){
   finTxItems.push({id: finNewId('i'), nama:'', harga:0, jumlah:1});
 }
+function finTxValidItems(){ return finTxItems.filter(it=>it.nama && it.nama.trim()); }
 function finTxRecalcAmount(){
-  if(!finTxItems.length) return; // gak ada item = Jumlah diisi manual, jangan diapa-apain
-  const total = finTxItems.reduce((s,it)=>s+(Number(it.harga)||0)*(Number(it.jumlah)||0), 0);
+  const valid = finTxValidItems();
+  if(!valid.length) return; // belum ada barang yang beneran diisi namanya = Jumlah diisi manual
+  const total = valid.reduce((s,it)=>s+(Number(it.harga)||0)*(Number(it.jumlah)||0), 0);
   document.getElementById('finTxAmount').value = total;
 }
 function finTxSyncAmountFieldMode(){
   const amountInput = document.getElementById('finTxAmount');
-  amountInput.readOnly = finTxItems.length>0;
-  amountInput.style.opacity = finTxItems.length>0 ? '0.7' : '1';
+  const hasValid = finTxValidItems().length>0;
+  amountInput.readOnly = hasValid;
+  amountInput.style.opacity = hasValid ? '0.7' : '1';
 }
 function finTxRenderItemRows(){
   const wrap = document.getElementById('finTxItemsList');
@@ -777,7 +776,7 @@ function finTxRenderItemRows(){
   `).join('');
   wrap.querySelectorAll('.fin-item-row').forEach(row=>{
     const it = finTxItems.find(x=>x.id===row.dataset.id); if(!it) return;
-    row.querySelector('.fin-item-nama').addEventListener('input', e=>{ it.nama = e.target.value; });
+    row.querySelector('.fin-item-nama').addEventListener('input', e=>{ it.nama = e.target.value; finTxSyncAmountFieldMode(); finTxRecalcAmount(); });
     row.querySelector('.fin-item-harga').addEventListener('input', e=>{ it.harga = Number(e.target.value)||0; finTxRecalcAmount(); });
     row.querySelector('.fin-item-jumlah').addEventListener('input', e=>{ it.jumlah = Number(e.target.value)||0; finTxRecalcAmount(); });
   });
@@ -935,7 +934,6 @@ function renderFinPribadi(){
       <button type="button" class="fin-toggle-chip ${finPribadiShowAll?'active':''}" id="finPribadiShowAllBtn">${finPribadiShowAll?'Semua':'Bulan Ini'}</button>
     </div>
     <div id="finPribadiMonthNavWrap"></div>
-    <div class="fin-section-label">Pengeluaran Sehari-hari</div>
     <div id="finPribadiListArea"></div>`;
   wrap.appendChild(main);
   finWireBackLink();
@@ -962,7 +960,6 @@ function renderFinPribadi(){
       <div class="fin-total-card" style="margin-bottom:14px;">
         <div><div class="fin-total-label">Masuk</div><div class="fin-total-val" style="color:var(--positive); font-size:15px;">${finFmt(masuk)}</div></div>
         <div><div class="fin-total-label">Keluar</div><div class="fin-total-val" style="color:var(--danger); font-size:15px;">${finFmt(keluar)}</div></div>
-        <div><div class="fin-total-label">Saldo</div><div class="fin-total-val" style="font-size:15px;">${finFmt(masuk-keluar)}</div></div>
       </div>
       ${txAll.length ? '<div id="finTxList"></div>' : `<div class="fin-empty">${finPribadiSearch ? 'Gak ada transaksi yang cocok.' : (finPribadiShowAll ? 'Belum ada transaksi sama sekali.' : 'Belum ada transaksi bulan ini.')}</div>`}
     `;
@@ -1221,6 +1218,7 @@ function openFinTxSheet(business, tx){
   accSel.value = tx ? (tx.account||'') : '';
   document.getElementById('finTxDeleteBtn').style.display = tx ? '' : 'none';
   finTxItems = (tx && Array.isArray(tx.items)) ? tx.items.map(it=>({id: it.id||finNewId('i'), nama: it.nama||'', harga: Number(it.harga)||0, jumlah: Number(it.jumlah)||0})) : [];
+  if(!finTxItems.length) finTxItems.push({id: finNewId('i'), nama:'', harga:0, jumlah:1});
   finTxRenderItemRows();
   document.getElementById('finTxOverlay').classList.add('show');
 }
@@ -1240,7 +1238,7 @@ document.querySelectorAll('#finTxTypeToggle button').forEach(b=>{
 document.getElementById('finTxCancelBtn').addEventListener('click', ()=>document.getElementById('finTxOverlay').classList.remove('show'));
 document.getElementById('finTxOverlay').addEventListener('click', e=>{ if(e.target.id==='finTxOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('finTxSaveBtn').addEventListener('click', async ()=>{
-  const validItems = finTxItems.filter(it=>it.nama.trim());
+  const validItems = finTxValidItems();
   const amount = validItems.length ? validItems.reduce((s,it)=>s+(Number(it.harga)||0)*(Number(it.jumlah)||0),0) : Number(document.getElementById('finTxAmount').value);
   const {business, tx} = finEditingTx;
   const isPribadi = business==='pribadi';
