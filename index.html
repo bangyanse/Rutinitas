@@ -299,6 +299,11 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .fin-item-row input{padding:10px 10px; border-radius:10px; border:none; background:var(--surface-2); color:var(--ink); font-size:13px; width:100%; box-sizing:border-box;}
 .fin-item-subtotal{font-size:11px; color:var(--ink-soft); text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .fin-item-remove{background:none; border:none; color:var(--danger); font-size:18px; line-height:1; cursor:pointer; padding:4px;}
+.fin-detail-row{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:14px;}
+.fin-detail-row:last-child{border-bottom:none;}
+.fin-detail-item-row{display:flex; justify-content:space-between; padding:7px 0; font-size:13.5px; color:var(--ink-soft); border-bottom:1px dashed var(--line);}
+.fin-detail-item-row:last-child{border-bottom:none;}
+.fin-detail-note{font-size:13.5px; color:var(--ink-soft); margin-top:10px; padding:10px; background:var(--surface-2); border-radius:12px;}
 .fin-item-header{display:grid; grid-template-columns:1fr 74px 52px 22px; gap:6px; font-size:10px; color:var(--ink-soft); margin-bottom:4px; text-transform:uppercase; letter-spacing:.2px;}
 .fin-eksaexp-total{display:flex; justify-content:space-between; align-items:center; background:var(--surface-2); border-radius:14px; padding:14px 16px; margin:6px 0 16px;}
 .fin-eksaexp-total-label{font-size:13px; font-weight:600; color:var(--ink-soft);}
@@ -658,6 +663,19 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 </div>
 
 <!-- KEUANGAN: form transaksi (Pribadi/Eksa-pengeluaran/Sawit/Walet) -->
+<div class="overlay" id="finTxDetailOverlay">
+  <div class="sheet">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:10px;">
+      <h3 id="finTxDetailTitle" style="margin:0; flex:1; min-width:0;">Detail</h3>
+      <button type="button" id="finTxDetailEditBtn" class="btn ghost" style="padding:8px 14px; font-size:13px; flex-shrink:0;">✎ Edit</button>
+    </div>
+    <div id="finTxDetailBody"></div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="finTxDetailCloseBtn" style="width:100%;">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="finTxOverlay">
   <div class="sheet">
     <h3 id="finTxSheetTitle">Tambah Transaksi</h3>
@@ -670,6 +688,11 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     <div class="field" id="finTxCategoryChipField" style="display:none;">
       <label>Kategori <button type="button" id="finCatManageBtn" style="font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; cursor:pointer; padding:0 4px;">Kelola</button></label>
       <div class="chip-row" id="finTxCategoryChips"></div>
+    </div>
+    <div class="field">
+      <label>Rincian Barang (opsional)</label>
+      <div id="finTxItemsList"></div>
+      <button type="button" class="btn ghost" id="finTxAddItemBtn" style="width:100%; margin-top:4px;">+ Tambah Barang</button>
     </div>
     <div class="field"><label>Akun (opsional)</label><select id="finTxAccount"><option value="">— Gak dicatat ke akun manapun —</option></select></div>
     <div class="field"><label>Tanggal</label><input type="date" id="finTxDate"></div>

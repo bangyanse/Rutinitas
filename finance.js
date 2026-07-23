@@ -50,6 +50,9 @@ function finGetCacheRates(){ try{ return JSON.parse(localStorage.getItem('fin_ca
 function finSetCacheRates(data){ localStorage.setItem('fin_cache_rates', JSON.stringify(data)); }
 function finGetHmForUnit(unitId){ return finGetCacheHm()[unitId]||[]; }
 function finGetRatesForUnit(unitId){ return finGetCacheRates()[unitId]||[]; }
+function finGetCacheConfirm(){ try{ return JSON.parse(localStorage.getItem('fin_cache_eksaconfirm'))||{}; }catch(e){ return {}; } } // {unitId:{monthKey:{pemasukan,pemasukanTxId,pengeluaran,pengeluaranTxId}}}
+function finSetCacheConfirm(data){ localStorage.setItem('fin_cache_eksaconfirm', JSON.stringify(data)); }
+function finGetConfirmForUnit(unitId, monthKey){ return ((finGetCacheConfirm()[unitId]||{})[monthKey]) || {pemasukan:false, pengeluaran:false}; }
 function finGetCacheAccounts(){ try{ return JSON.parse(localStorage.getItem('fin_cache_accounts'))||[]; }catch(e){ return []; } }
 function finSetCacheAccounts(data){ localStorage.setItem('fin_cache_accounts', JSON.stringify(data)); }
 function finGetCacheSaldo(){ try{ return JSON.parse(localStorage.getItem('fin_cache_saldo'))||{}; }catch(e){ return {}; } } // {accountId:[{monthKey,amount}, ...]}
@@ -85,6 +88,7 @@ const FIN_ENDPOINT = {
   'rate-add':'/finance/eksa/rates/add', 'rate-delete':'/finance/eksa/rates/delete',
   'unit-add':'/finance/eksa/units/add', 'unit-rename':'/finance/eksa/units/rename', 'unit-delete':'/finance/eksa/units/delete',
   'unit-set-accounts':'/finance/eksa/units/set-accounts',
+  'eksa-confirm-set':'/finance/eksa/confirm/set',
   'acct-add':'/finance/accounts/add', 'acct-rename':'/finance/accounts/rename', 'acct-delete':'/finance/accounts/delete',
   'acct-saldo-set':'/finance/accounts/saldo/set',
   'cat-add':'/finance/categories/add', 'cat-delete':'/finance/categories/delete',
@@ -282,6 +286,48 @@ async function finDeleteRate(unitId, effectiveFrom){
   catch(e){ finHandleSaveError(e, 'rate-delete', {unitId, effectiveFrom}); }
 }
 
+/* ---- Konfirmasi pendapatan/gaji operator Eksa: dari "kalkulasi doang" jadi transaksi beneran ----
+   Input HM cuma ngasih tau BERAPA seharusnya, bukan berarti duitnya udah pindah tangan.
+   Baru kehitung ke saldo akun (lewat finBusinessMonthNet & finAccountMonthDelta) begitu
+   ditandain lewat salah satu fungsi di bawah ini, yang bikin FinanceTx beneran. */
+async function finSetConfirmEntry(unitId, monthKey, entry){
+  const all = finGetCacheConfirm(); all[unitId] = all[unitId]||{}; all[unitId][monthKey] = entry; finSetCacheConfirm(all);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('eksa-confirm-set', {vaultId, unitId, monthKey, entry}); }
+  catch(e){ finHandleSaveError(e, 'eksa-confirm-set', {unitId, monthKey, entry}); }
+}
+async function finConfirmEksaPemasukan(unitId, monthKey){
+  const unit = finGetCacheUnits().find(u=>u.id===unitId); if(!unit) return;
+  const r = finEksaUnitMonthNet(unitId, monthKey);
+  if(!(r.pendapatan>0)){ showToast('Belum ada pendapatan buat bulan ini'); return; }
+  const entry = finGetConfirmForUnit(unitId, monthKey);
+  const tx = await finAddTx('rental_eksa', {
+    type:'in', amount:r.pendapatan, category:'Pendapatan Sewa', account: unit.incomeAccountId||'',
+    date: finConfirmDateForMonth(monthKey), note: `Pendapatan ${unit.name} - ${finMonthLabel(finParseMonthKey(monthKey))}`
+  });
+  await finSetConfirmEntry(unitId, monthKey, {...entry, pemasukan:true, pemasukanTxId:tx.id});
+}
+async function finConfirmEksaPengeluaran(unitId, monthKey){
+  const unit = finGetCacheUnits().find(u=>u.id===unitId); if(!unit) return;
+  const r = finEksaUnitMonthNet(unitId, monthKey);
+  if(!(r.gajiOperator>0)){ showToast('Belum ada gaji operator buat bulan ini'); return; }
+  const entry = finGetConfirmForUnit(unitId, monthKey);
+  const tx = await finAddTx('rental_eksa', {
+    type:'out', amount:r.gajiOperator, category:'Gaji Operator', account: unit.salaryAccountId||'',
+    date: finConfirmDateForMonth(monthKey), note: `Gaji Operator ${unit.name} - ${finMonthLabel(finParseMonthKey(monthKey))}`
+  });
+  await finSetConfirmEntry(unitId, monthKey, {...entry, pengeluaran:true, pengeluaranTxId:tx.id});
+}
+async function finUnconfirmEksa(unitId, monthKey, field){
+  const entry = finGetConfirmForUnit(unitId, monthKey);
+  const txId = field==='pemasukan' ? entry.pemasukanTxId : entry.pengeluaranTxId;
+  if(txId) await finDeleteTx('rental_eksa', txId);
+  const next = {...entry};
+  if(field==='pemasukan'){ next.pemasukan=false; next.pemasukanTxId=undefined; }
+  else { next.pengeluaran=false; next.pengeluaranTxId=undefined; }
+  await finSetConfirmEntry(unitId, monthKey, next);
+}
+
 async function finAddUnit(name){
   const unit = {id:finNewId('u'), name};
   const units = finGetCacheUnits(); units.push(unit); finSetCacheUnits(units);
@@ -422,13 +468,15 @@ async function finSyncAll(){
     finSetCacheTx(txRes);
     const units = await finApiPath('/finance/eksa/units/list', {vaultId});
     finSetCacheUnits(units);
-    const hmAll = {}, ratesAll = {};
+    const hmAll = {}, ratesAll = {}, confirmAll = {};
     for(const u of units){
       hmAll[u.id] = await finApiPath('/finance/eksa/hm/list', {vaultId, unitId:u.id});
       ratesAll[u.id] = await finApiPath('/finance/eksa/rates/list', {vaultId, unitId:u.id});
+      confirmAll[u.id] = await finApiPath('/finance/eksa/confirm/list', {vaultId, unitId:u.id});
     }
     finSetCacheHm(hmAll);
     finSetCacheRates(ratesAll);
+    finSetCacheConfirm(confirmAll);
     for(const u of units){
       if(!ratesAll[u.id] || ratesAll[u.id].length===0) await finSeedDefaultRates(u.id);
     }
@@ -521,6 +569,17 @@ function finAddDaysStr(dateStr, n){
 let finHmLastDate = null;
 function finFmtN(n){ return parseFloat(parseFloat(n).toFixed(1)); }
 function finMonthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+// Buat tanggal transaksi konfirmasi pendapatan/gaji Eksa: kalau bulan yang dikonfirmasi masih
+// bulan berjalan, pakai hari ini; kalau udah lewat (dikonfirmasi telat), pakai tanggal terakhir
+// bulan itu — biar transaksinya tetap kehitung di laporan bulan yang bener, bukan nyasar ke
+// bulan saat ini.
+function finConfirmDateForMonth(monthKey){
+  const today = finTodayStr();
+  if(today.slice(0,7)===monthKey) return today;
+  const [y,m] = monthKey.split('-').map(Number);
+  const last = new Date(y, m, 0);
+  return last.getFullYear()+'-'+String(last.getMonth()+1).padStart(2,'0')+'-'+String(last.getDate()).padStart(2,'0');
+}
 function finMonthLabel(d){ return FIN_MONTHS[d.getMonth()]+' '+d.getFullYear(); }
 function finTxInMonth(list, monthKey){ return (list||[]).filter(t=>t.date && t.date.slice(0,7)===monthKey); }
 function finHmInMonth(rows, monthKey){ return (rows||[]).filter(r=>r.tgl && r.tgl.slice(0,7)===monthKey); }
@@ -546,14 +605,15 @@ function finTxMatchesQuery(t, q){
 // Pendapatan & gaji operator 1 unit Eksa, bulan tertentu (belum dikurangi pengeluaran — itu dihitung gabungan semua unit)
 function finEksaUnitMonthNet(unitId, monthKey){
   const rates = finGetRatesForUnit(unitId);
-  if(!rates.length) return {pendapatan:0, gajiOperator:0, totalHM:0, hariKerja:0, rate:null};
+  const confirmed = finGetConfirmForUnit(unitId, monthKey);
+  if(!rates.length) return {pendapatan:0, gajiOperator:0, totalHM:0, hariKerja:0, rate:null, confirmed};
   const hmRows = finHmInMonth(finGetHmForUnit(unitId), monthKey);
   const totalHM = finFmtN(hmRows.reduce((s,r)=>s+r.dur,0));
   const hariKerja = hmRows.length;
   const r = finRateForMonth(rates, monthKey);
   const pendapatan = finHitungPendapatan(totalHM, hariKerja, r);
   const gajiOperator = finHitungGajiOperator(totalHM, hariKerja, r);
-  return {pendapatan, gajiOperator, totalHM, hariKerja, rate:r};
+  return {pendapatan, gajiOperator, totalHM, hariKerja, rate:r, confirmed};
 }
 
 // Pendapatan bersih hasil panen Sawit bulan tertentu (belum dikurangi pengeluaran lain —
@@ -576,15 +636,25 @@ function finSawitMonthNet(monthKey){
 function finBusinessMonthNet(business, monthKey){
   if(business==='rental_eksa'){
     const units = finGetCacheUnits();
-    let pendapatan=0, gajiOperator=0, totalHM=0, hariKerja=0;
+    // pendapatan/gajiOperator yang BELUM dikonfirmasi cuma proyeksi — gak boleh ikut kehitung
+    // ke Laba Bersih/saldo akun. Yang UDAH dikonfirmasi udah jadi FinanceTx beneran, otomatis
+    // ke-hitung lewat finSumIn/finSumOut(tx) di bawah, jadi jangan ditambahin dobel di sini.
+    let pendapatanProjeksi=0, gajiOperatorProjeksi=0, totalHM=0, hariKerja=0;
     units.forEach(u=>{
       const r = finEksaUnitMonthNet(u.id, monthKey);
-      pendapatan += r.pendapatan; gajiOperator += r.gajiOperator; totalHM += r.totalHM; hariKerja += r.hariKerja;
+      totalHM += r.totalHM; hariKerja += r.hariKerja;
+      if(!r.confirmed.pemasukan) pendapatanProjeksi += r.pendapatan;
+      if(!r.confirmed.pengeluaran) gajiOperatorProjeksi += r.gajiOperator;
     });
     const tx = finTxInMonth((finGetCacheTx().rental_eksa||[]), monthKey);
-    const pengeluaran = finSumOut(tx) - finSumIn(tx);
-    const net = pendapatan - gajiOperator - pengeluaran;
-    return {pendapatan, gajiOperator, pengeluaran, net, totalHM:finFmtN(totalHM), hariKerja};
+    const masukAktual = finSumIn(tx);   // termasuk pendapatan sewa yg udah dikonfirmasi + pemasukan lain
+    const keluarAktual = finSumOut(tx); // termasuk gaji operator yg udah dikonfirmasi + pengeluaran lain (sparepart dll)
+    const net = masukAktual - keluarAktual;
+    return {
+      pendapatanProjeksi, gajiOperatorProjeksi,
+      masukAktual, keluarAktual, net,
+      totalHM:finFmtN(totalHM), hariKerja,
+    };
   }
   if(business==='sawit'){
     const r = finSawitMonthNet(monthKey);
@@ -608,11 +678,11 @@ function finAccountMonthDelta(accountId, monthKey){
       if(t.account===accountId) delta += (t.type==='in'? t.amount : -t.amount);
     });
   });
-  finGetCacheUnits().forEach(u=>{
-    const r = finEksaUnitMonthNet(u.id, monthKey);
-    if(u.incomeAccountId===accountId) delta += r.pendapatan;
-    if(u.salaryAccountId===accountId) delta -= r.gajiOperator;
-  });
+  // CATATAN: dulu di sini ada tambahan otomatis dari finEksaUnitMonthNet (pendapatan/gaji
+  // operator Eksa dihitung langsung dari Input HM). Itu DIHAPUS — pendapatan/gaji operator
+  // cuma proyeksi/kalkulasi sampai user tandain "sudah diterima/dibayar" di tab Laporan
+  // (lihat finConfirmEksaPemasukan/finConfirmEksaPengeluaran), yang baru bikin tx beneran dan
+  // otomatis ke-hitung lewat loop tx di atas. Jadi duit yang belum jelas gak nyangkut di saldo.
   return delta;
 }
 // Saldo akun sampai dengan bulan tertentu (KUMULATIF, bukan cuma bulan itu doang).
@@ -680,6 +750,52 @@ let finPribadiSearch = ''; // query pencarian transaksi Pribadi
 let finPribadiShowAll = false; // true = tampilin semua transaksi (semua bulan), bukan cuma bulan yang lagi dilihat
 let finExpSearch = {rental_eksa:'', sawit:''}; // query pencarian Pengeluaran, per-business (Eksa & Sawit reuse sheet yang sama)
 let finExpShowAll = {rental_eksa:false, sawit:false}; // toggle 'semua data' Pengeluaran, per-business
+let finTxItems = []; // rincian barang opsional di sheet transaksi biasa (Pribadi/Walet)
+
+function finTxAddItemRow(){
+  finTxItems.push({id: finNewId('i'), nama:'', harga:0, jumlah:1});
+}
+function finTxRecalcAmount(){
+  if(!finTxItems.length) return; // gak ada item = Jumlah diisi manual, jangan diapa-apain
+  const total = finTxItems.reduce((s,it)=>s+(Number(it.harga)||0)*(Number(it.jumlah)||0), 0);
+  document.getElementById('finTxAmount').value = total;
+}
+function finTxSyncAmountFieldMode(){
+  const amountInput = document.getElementById('finTxAmount');
+  amountInput.readOnly = finTxItems.length>0;
+  amountInput.style.opacity = finTxItems.length>0 ? '0.7' : '1';
+}
+function finTxRenderItemRows(){
+  const wrap = document.getElementById('finTxItemsList');
+  wrap.innerHTML = finTxItems.map(it=>`
+    <div class="fin-item-row" data-id="${it.id}">
+      <input type="text" class="fin-item-nama" placeholder="mis. Beras 5kg" value="${escapeHtml(it.nama)}">
+      <input type="number" class="fin-item-harga" placeholder="0" value="${it.harga||''}" inputmode="numeric">
+      <input type="number" class="fin-item-jumlah" placeholder="1" value="${it.jumlah||''}" inputmode="numeric">
+      <button type="button" class="fin-item-remove" data-remove="${it.id}">✕</button>
+    </div>
+  `).join('');
+  wrap.querySelectorAll('.fin-item-row').forEach(row=>{
+    const it = finTxItems.find(x=>x.id===row.dataset.id); if(!it) return;
+    row.querySelector('.fin-item-nama').addEventListener('input', e=>{ it.nama = e.target.value; });
+    row.querySelector('.fin-item-harga').addEventListener('input', e=>{ it.harga = Number(e.target.value)||0; finTxRecalcAmount(); });
+    row.querySelector('.fin-item-jumlah').addEventListener('input', e=>{ it.jumlah = Number(e.target.value)||0; finTxRecalcAmount(); });
+  });
+  wrap.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      finTxItems = finTxItems.filter(x=>x.id!==btn.dataset.remove);
+      finTxRenderItemRows();
+      finTxSyncAmountFieldMode();
+      finTxRecalcAmount();
+    });
+  });
+  finTxSyncAmountFieldMode();
+  finTxRecalcAmount();
+}
+document.getElementById('finTxAddItemBtn').addEventListener('click', ()=>{
+  finTxAddItemRow();
+  finTxRenderItemRows();
+});
 let finSawitSubTab = 'ringkasan';
 let finSawitPanenLastDate = null; // sama pola kayak finHmLastDate, biar input panen harian berturut-turut gampang
 let finEditingSawitRate = null; // effectiveFrom kalau lagi edit rate Sawit
@@ -852,18 +968,25 @@ function renderFinPribadi(){
     `;
     if(txAll.length){
       const listEl = listArea.querySelector('#finTxList');
-      listEl.innerHTML = txAll.map(t=>`
+      listEl.innerHTML = txAll.map(t=>{
+        const hasItems = Array.isArray(t.items) && t.items.length;
+        const judul = hasItems ? (t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : '')) : (t.category||'Lainnya');
+        return `
         <div class="fin-tx-item" data-id="${t.id}">
           <div>
-            <div class="fin-tx-cat">${escapeHtml(t.category||'Lainnya')}</div>
-            ${t.note?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
+            <div class="fin-tx-cat">${escapeHtml(judul)}</div>
+            ${(!hasItems && t.note)?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
             <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}${finPribadiShowAll?' · '+finMonthLabel(finParseMonthKey(t.date.slice(0,7))):''}</div>
           </div>
           <div class="fin-tx-amt ${t.type}">${t.type==='out'?'-':'+'}${finFmt(t.amount)}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
-        row.addEventListener('click', ()=>openFinTxSheet('pribadi', txAll.find(t=>t.id===row.dataset.id)));
+        row.addEventListener('click', ()=>{
+          const t = txAll.find(t=>t.id===row.dataset.id);
+          openFinTxDetailView(t, ()=>openFinTxSheet('pribadi', t));
+        });
       });
     }
   }
@@ -1024,6 +1147,50 @@ document.getElementById('finCatDoneBtn').addEventListener('click', ()=>{
 });
 document.getElementById('finCatOverlay').addEventListener('click', e=>{ if(e.target.id==='finCatOverlay') e.currentTarget.classList.remove('show'); });
 
+/* ---------------- Detail view (read-only) sebelum edit — dipakai Pribadi & Pengeluaran Eksa/Sawit ---------------- */
+let finTxDetailEditCallback = null;
+function openFinTxDetailView(t, editCallback){
+  finTxDetailEditCallback = editCallback;
+  const hasItems = Array.isArray(t.items) && t.items.length;
+  document.getElementById('finTxDetailTitle').textContent = hasItems
+    ? (t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : ''))
+    : (t.category||'Lainnya');
+  const fcache = finGetCacheFotos();
+  let itemsHtml = '';
+  if(hasItems){
+    itemsHtml = t.items.map(it=>`
+      <div class="fin-detail-item-row">
+        <span>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</span>
+        <span>${finFmt((Number(it.harga)||0)*(Number(it.jumlah)||0))}</span>
+      </div>
+    `).join('');
+  }
+  const thumbs = (t.notaFotoIds||[]).filter(fid=>fcache[fid]).map(fid=>`<img src="${fcache[fid]}" data-view="${fid}">`).join('');
+  const bodyEl = document.getElementById('finTxDetailBody');
+  bodyEl.innerHTML = `
+    <div class="fin-detail-row"><span>Tanggal</span><span>${t.date.split('-').reverse().join('/')}</span></div>
+    ${t.type ? `<div class="fin-detail-row"><span>Tipe</span><span>${t.type==='out'?'Pengeluaran':'Pemasukan'}</span></div>` : ''}
+    ${(!hasItems && t.category) ? `<div class="fin-detail-row"><span>Kategori</span><span>${escapeHtml(t.category)}</span></div>` : ''}
+    ${itemsHtml}
+    ${t.note ? `<div class="fin-detail-note">${escapeHtml(t.note)}</div>` : ''}
+    ${thumbs ? `<div class="fin-item-thumb-row" style="margin-top:10px;">${thumbs}</div>` : ''}
+    <div class="fin-detail-row" style="margin-top:10px; font-weight:700;">
+      <span>Total</span><span style="color:${t.type==='out'?'var(--danger)':'var(--positive)'}">${t.type==='out'?'-':'+'}${finFmt(t.amount)}</span>
+    </div>
+  `;
+  bodyEl.querySelectorAll('[data-view]').forEach(img=>{
+    img.addEventListener('click', ()=>{ const f=fcache[img.dataset.view]; if(f) window.open(f, '_blank'); });
+  });
+  document.getElementById('finTxDetailOverlay').classList.add('show');
+}
+document.getElementById('finTxDetailCloseBtn').addEventListener('click', ()=>document.getElementById('finTxDetailOverlay').classList.remove('show'));
+document.getElementById('finTxDetailOverlay').addEventListener('click', e=>{ if(e.target.id==='finTxDetailOverlay') e.currentTarget.classList.remove('show'); });
+document.getElementById('finTxDetailEditBtn').addEventListener('click', ()=>{
+  document.getElementById('finTxDetailOverlay').classList.remove('show');
+  const cb = finTxDetailEditCallback;
+  setTimeout(()=>{ if(cb) cb(); }, 150); // kasih jeda dikit biar transisi overlay lama-baru gak tabrakan
+});
+
 function openFinTxSheet(business, tx){
   finEditingTx = tx ? {business, tx} : {business, tx:null};
   document.getElementById('finTxSheetTitle').textContent = tx ? 'Edit Transaksi' : (business==='rental_eksa' ? 'Tambah Pengeluaran' : 'Tambah Transaksi');
@@ -1053,6 +1220,8 @@ function openFinTxSheet(business, tx){
   accSel.innerHTML = '<option value="">— Gak dicatat ke akun manapun —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   accSel.value = tx ? (tx.account||'') : '';
   document.getElementById('finTxDeleteBtn').style.display = tx ? '' : 'none';
+  finTxItems = (tx && Array.isArray(tx.items)) ? tx.items.map(it=>({id: it.id||finNewId('i'), nama: it.nama||'', harga: Number(it.harga)||0, jumlah: Number(it.jumlah)||0})) : [];
+  finTxRenderItemRows();
   document.getElementById('finTxOverlay').classList.add('show');
 }
 document.getElementById('finCatManageBtn').addEventListener('click', ()=>{
@@ -1071,7 +1240,8 @@ document.querySelectorAll('#finTxTypeToggle button').forEach(b=>{
 document.getElementById('finTxCancelBtn').addEventListener('click', ()=>document.getElementById('finTxOverlay').classList.remove('show'));
 document.getElementById('finTxOverlay').addEventListener('click', e=>{ if(e.target.id==='finTxOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('finTxSaveBtn').addEventListener('click', async ()=>{
-  const amount = Number(document.getElementById('finTxAmount').value);
+  const validItems = finTxItems.filter(it=>it.nama.trim());
+  const amount = validItems.length ? validItems.reduce((s,it)=>s+(Number(it.harga)||0)*(Number(it.jumlah)||0),0) : Number(document.getElementById('finTxAmount').value);
   const {business, tx} = finEditingTx;
   const isPribadi = business==='pribadi';
   const category = isPribadi ? finSelectedTxCategory : document.getElementById('finTxCategory').value.trim();
@@ -1082,8 +1252,9 @@ document.getElementById('finTxSaveBtn').addEventListener('click', async ()=>{
   if(!amount || amount<=0){ showToast('Isi jumlahnya dulu ya'); return; }
   if(!date){ showToast('Pilih tanggal dulu ya'); return; }
   if(isPribadi && !category){ showToast('Pilih kategori dulu ya'); return; }
-  if(tx) await finUpdateTx(business, {...tx, type, amount, category, date, note, account});
-  else await finAddTx(business, {type, amount, category, date, note, account});
+  const items = validItems.length ? validItems : undefined;
+  if(tx) await finUpdateTx(business, {...tx, type, amount, category, date, note, account, items});
+  else await finAddTx(business, {type, amount, category, date, note, account, items});
   document.getElementById('finTxOverlay').classList.remove('show');
   showToast('Tersimpan');
   renderKeuanganBody();
@@ -1435,7 +1606,8 @@ function renderFinPengeluaranRincian(body, business){
     const monthKey = finMonthKey(finMonthCursor);
     const cache = finGetCacheTx();
     const base = finExpShowAll[business] ? (cache[business]||[]) : finTxInMonth(cache[business]||[], monthKey);
-    const txAll = base.filter(t=>finTxMatchesQuery(t, finExpSearch[business])).sort((a,b)=>b.date.localeCompare(a.date));
+    const onlyOut = base.filter(t=>t.type==='out'); // tab ini emang khusus pengeluaran; pemasukan (mis. tx Pendapatan Sewa hasil konfirmasi) tampil di Laporan, bukan di sini
+    const txAll = onlyOut.filter(t=>finTxMatchesQuery(t, finExpSearch[business])).sort((a,b)=>b.date.localeCompare(a.date));
     const keluar = finSumOut(txAll);
     const listArea = body.querySelector('#finEksaExpListArea');
     listArea.innerHTML = `<div class="fin-total-card" style="margin-bottom:14px;">
@@ -1445,29 +1617,14 @@ function renderFinPengeluaranRincian(body, business){
 
     if(txAll.length){
       const listEl = listArea.querySelector('#finTxList');
-      const fcache = finGetCacheFotos();
       listEl.innerHTML = txAll.map(t=>{
-        let rincianHtml = '';
-        let judul;
-        if(Array.isArray(t.items) && t.items.length){
-          judul = t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : '');
-          rincianHtml = t.items.map(it=>`
-            <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-soft); margin-top:2px;">
-              <span>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</span>
-              <span>${finFmt((Number(it.harga)||0)*(Number(it.jumlah)||0))}</span>
-            </div>
-          `).join('');
-        } else {
-          judul = t.category || 'Lainnya';
-          if(t.note) rincianHtml = `<div class="fin-tx-note">${escapeHtml(t.note)}</div>`;
-        }
-        const thumbs = (t.notaFotoIds||[]).filter(fid=>fcache[fid]).map(fid=>`<img src="${fcache[fid]}" data-view="${fid}">`).join('');
+        const hasItems = Array.isArray(t.items) && t.items.length;
+        const judul = hasItems ? (t.items[0].nama + (t.items.length>1 ? ' +'+(t.items.length-1)+' lainnya' : '')) : (t.category||'Lainnya');
         return `
         <div class="fin-tx-item" data-id="${t.id}">
           <div style="flex:1; min-width:0;">
             <div class="fin-tx-cat">${escapeHtml(judul)}</div>
-            ${rincianHtml}
-            ${thumbs ? `<div class="fin-item-thumb-row">${thumbs}</div>` : ''}
+            ${(!hasItems && t.note)?`<div class="fin-tx-note">${escapeHtml(t.note)}</div>`:''}
             <div class="fin-tx-date">${t.date.split('-').reverse().join('/')}${finExpShowAll[business]?' · '+finMonthLabel(finParseMonthKey(t.date.slice(0,7))):''}</div>
           </div>
           <div class="fin-tx-amt out">-${finFmt(t.amount)}</div>
@@ -1475,11 +1632,9 @@ function renderFinPengeluaranRincian(body, business){
       `;
       }).join('');
       listEl.querySelectorAll('.fin-tx-item').forEach(row=>{
-        row.addEventListener('click', (e)=>{
-          const viewEl = e.target.closest('[data-view]');
-          if(viewEl){ window.open(fcache[viewEl.dataset.view], '_blank'); return; }
+        row.addEventListener('click', ()=>{
           const tx = txAll.find(t=>t.id===row.dataset.id);
-          openFinEksaExpSheet(business, tx);
+          openFinTxDetailView(tx, ()=>openFinEksaExpSheet(business, tx));
         });
       });
 
@@ -1520,29 +1675,64 @@ function renderFinEksaLaporan(body){
   let html = `
     <div class="fin-report-card">
       <div class="fin-report-note" style="margin:0 0 10px; font-weight:700; color:var(--ink);">${unit?escapeHtml(unit.name):''}</div>
-      <div class="fin-report-row"><span>Pendapatan Kotor</span><span>${finFmt(ur.pendapatan)}</span></div>
-      <div class="fin-report-row"><span>Gaji Operator</span><span>-${finFmt(ur.gajiOperator)}</span></div>
+      <div class="fin-report-row"><span>Pendapatan Kotor${ur.confirmed.pemasukan?'':' (proyeksi)'}</span><span>${finFmt(ur.pendapatan)}</span></div>
+      <div class="fin-report-row"><span>Gaji Operator${ur.confirmed.pengeluaran?'':' (proyeksi)'}</span><span>-${finFmt(ur.gajiOperator)}</span></div>
       <div class="fin-report-row"><span>Subtotal Unit Ini</span><span>${finFmt(ur.pendapatan-ur.gajiOperator)}</span></div>
       <div class="fin-report-note">${ur.hariKerja} hari kerja · ${ur.totalHM} HM · rate berlaku sejak ${ur.rate.effectiveFrom}</div>
     </div>
-  `;
-  if(units.length>1){
-    html += `
     <div class="fin-report-card">
-      <div class="fin-report-note" style="margin:0 0 10px; font-weight:700; color:var(--ink);">Total Semua Unit Eksa</div>
-      <div class="fin-report-row"><span>Total Pendapatan</span><span>${finFmt(total.pendapatan)}</span></div>
-      <div class="fin-report-row"><span>Total Gaji Operator</span><span>-${finFmt(total.gajiOperator)}</span></div>
-      <div class="fin-report-row"><span>Pengeluaran Tambahan (bareng)</span><span>${total.pengeluaran>=0?'-':'+'}${finFmt(Math.abs(total.pengeluaran))}</span></div>
+      <div class="fin-report-row" style="align-items:center;">
+        <span>Status Pendapatan</span>
+        ${ur.confirmed.pemasukan
+          ? `<span style="display:flex; align-items:center; gap:8px;"><span style="color:var(--positive); font-weight:700; font-size:12.5px;">✓ Sudah diterima</span><button type="button" class="fin-toggle-chip" id="finEksaUnconfirmMasuk" style="padding:6px 10px; font-size:11.5px;">Batalkan</button></span>`
+          : `<button type="button" class="fin-toggle-chip active" id="finEksaConfirmMasuk" style="padding:8px 12px;">Tandai Sudah Diterima</button>`}
+      </div>
+      <div class="fin-report-row" style="align-items:center;">
+        <span>Status Gaji Operator</span>
+        ${ur.confirmed.pengeluaran
+          ? `<span style="display:flex; align-items:center; gap:8px;"><span style="color:var(--positive); font-weight:700; font-size:12.5px;">✓ Sudah dibayar</span><button type="button" class="fin-toggle-chip" id="finEksaUnconfirmKeluar" style="padding:6px 10px; font-size:11.5px;">Batalkan</button></span>`
+          : `<button type="button" class="fin-toggle-chip active" id="finEksaConfirmKeluar" style="padding:8px 12px;">Tandai Sudah Dibayar</button>`}
+      </div>
+      <div class="fin-report-note">Pendapatan/gaji operator di atas cuma kalkulasi dari Input HM — baru kehitung ke saldo akun & Laba Bersih di bawah kalau ditandai di sini.</div>
+    </div>
+  `;
+  const judulTotal = units.length>1 ? 'Ringkasan Semua Unit Eksa (Aktual)' : 'Ringkasan Bulan Ini (Aktual)';
+  html += `
+    <div class="fin-report-card">
+      <div class="fin-report-note" style="margin:0 0 10px; font-weight:700; color:var(--ink);">${judulTotal}</div>
+      <div class="fin-report-row"><span>Pemasukan Aktual</span><span>+${finFmt(total.masukAktual)}</span></div>
+      <div class="fin-report-row"><span>Pengeluaran Aktual</span><span>-${finFmt(total.keluarAktual)}</span></div>
       <div class="fin-report-row"><span>Laba Bersih</span><span style="color:${total.net>=0?'var(--positive)':'var(--danger)'}">${finFmt(total.net)}</span></div>
     </div>`;
-  } else {
+  if(total.pendapatanProjeksi>0 || total.gajiOperatorProjeksi>0){
     html += `
-    <div class="fin-report-card">
-      <div class="fin-report-row"><span>Pengeluaran Tambahan</span><span>${total.pengeluaran>=0?'-':'+'}${finFmt(Math.abs(total.pengeluaran))}</span></div>
-      <div class="fin-report-row"><span>Laba Bersih</span><span style="color:${total.net>=0?'var(--positive)':'var(--danger)'}">${finFmt(total.net)}</span></div>
+    <div class="fin-report-card" style="border:1px dashed var(--line); background:transparent;">
+      <div class="fin-report-note" style="margin:0 0 10px; font-weight:700; color:var(--ink);">Estimasi Belum Dikonfirmasi</div>
+      ${total.pendapatanProjeksi>0?`<div class="fin-report-row"><span>Pendapatan (proyeksi)</span><span>+${finFmt(total.pendapatanProjeksi)}</span></div>`:''}
+      ${total.gajiOperatorProjeksi>0?`<div class="fin-report-row"><span>Gaji Operator (proyeksi)</span><span>-${finFmt(total.gajiOperatorProjeksi)}</span></div>`:''}
+      <div class="fin-report-note">Belum ikut ke Laba Bersih di atas sampai ditandai "Sudah Diterima/Dibayar".</div>
     </div>`;
   }
   cardWrap.innerHTML = html;
+
+  const confirmMasukBtn = document.getElementById('finEksaConfirmMasuk');
+  if(confirmMasukBtn) confirmMasukBtn.addEventListener('click', async ()=>{
+    await finConfirmEksaPemasukan(unitId, monthKey); showToast('Pendapatan ditandai diterima'); renderFinEksa();
+  });
+  const unconfirmMasukBtn = document.getElementById('finEksaUnconfirmMasuk');
+  if(unconfirmMasukBtn) unconfirmMasukBtn.addEventListener('click', async ()=>{
+    if(!confirm('Batalkan status "sudah diterima"? Transaksi pendapatan yang udah tercatat bakal dihapus.')) return;
+    await finUnconfirmEksa(unitId, monthKey, 'pemasukan'); showToast('Dibatalkan'); renderFinEksa();
+  });
+  const confirmKeluarBtn = document.getElementById('finEksaConfirmKeluar');
+  if(confirmKeluarBtn) confirmKeluarBtn.addEventListener('click', async ()=>{
+    await finConfirmEksaPengeluaran(unitId, monthKey); showToast('Gaji operator ditandai dibayar'); renderFinEksa();
+  });
+  const unconfirmKeluarBtn = document.getElementById('finEksaUnconfirmKeluar');
+  if(unconfirmKeluarBtn) unconfirmKeluarBtn.addEventListener('click', async ()=>{
+    if(!confirm('Batalkan status "sudah dibayar"? Transaksi gaji yang udah tercatat bakal dihapus.')) return;
+    await finUnconfirmEksa(unitId, monthKey, 'pengeluaran'); showToast('Dibatalkan'); renderFinEksa();
+  });
 }
 
 function renderFinEksaRate(body){
