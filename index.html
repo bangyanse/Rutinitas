@@ -26,12 +26,12 @@
   --ig-gradient:linear-gradient(135deg,#5B51D8,#A23CC4,#E1306C,#FD8D32);
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html,body{height:100%;}
-body{margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:env(safe-area-inset-bottom); transition:background .2s ease,color .2s ease; overscroll-behavior-y:none;}
+html{height:100%; overflow:hidden;}
+body{height:100%; width:100%; overflow:hidden; position:fixed; overscroll-behavior:none; margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; transition:background .2s ease,color .2s ease;}
 .serif{font-family:'Inter',sans-serif;}
 .mono{font-family:'JetBrains Mono',monospace;}
 button,input,select,textarea{font-family:inherit;}
-#app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
+#app{max-width:560px; margin:0 auto; position:absolute; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:env(safe-area-inset-bottom); display:flex; flex-direction:column;}
 
 /* tap/press feedback like IG */
 button, .row, .chip, .gram-card, .icon-btn, .day-select-btn, .tab{
@@ -137,7 +137,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 #noteBody .chk-line.checked .chk-text{color:var(--ink-soft); text-decoration:line-through;}
 #noteBody .chk-text{flex:1; min-width:0;}
 #noteTitle{width:100%; border:none; background:none; font-size:26px; font-weight:800; color:var(--ink); padding:4px 2px 6px; outline:none;}
-.editor-toolbar{display:flex; align-items:center; gap:8px; padding:8px 0 12px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin-bottom:12px;}
+.editor-toolbar{display:flex; align-items:center; gap:8px; padding:8px 0 12px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin-bottom:12px; position:sticky; z-index:25; background:var(--bg);}
 #noteBody{width:100%; min-height:340px; border:none; outline:none; background:none; color:var(--ink); font-size:15px; line-height:1.65; padding:2px;}
 #noteBody img{max-width:100%; border-radius:10px; display:block; margin:10px 0;}
 #noteBody audio{width:100%; margin:10px 0;}
@@ -303,7 +303,8 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .fin-detail-row:last-child{border-bottom:none;}
 .fin-detail-item-row{display:flex; justify-content:space-between; padding:7px 0; font-size:13.5px; color:var(--ink-soft); border-bottom:1px dashed var(--line);}
 .fin-detail-item-row:last-child{border-bottom:none;}
-.fin-detail-note{font-size:13.5px; color:var(--ink-soft); margin-top:10px; padding:10px; background:var(--surface-2); border-radius:12px;}
+.fin-detail-note{font-size:13.5px; color:var(--ink-soft); margin-top:10px; padding:10px; background:var(--surface-2); border-radius:12px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;}
+.fin-detail-note a{color:var(--accent); text-decoration:underline;}
 .fin-item-header{display:grid; grid-template-columns:1fr 74px 52px 22px; gap:6px; font-size:10px; color:var(--ink-soft); margin-bottom:4px; text-transform:uppercase; letter-spacing:.2px;}
 .fin-eksaexp-total{display:flex; justify-content:space-between; align-items:center; background:var(--surface-2); border-radius:14px; padding:14px 16px; margin:6px 0 16px;}
 .fin-eksaexp-total-label{font-size:13px; font-weight:600; color:var(--ink-soft);}
@@ -432,13 +433,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
       </div>
       <main>
         <input type="text" id="noteTitle" placeholder="Judul">
-        <div class="editor-toolbar">
-          <select id="fmtBlockSelect" class="fmt-select">
-            <option value="P">Teks Biasa</option>
-            <option value="H1">Judul</option>
-            <option value="H2">Subjudul</option>
-          </select>
-          <div class="toolbar-sep"></div>
+        <div class="editor-toolbar" id="noteToolbar">
           <button type="button" id="fmtBoldBtn" class="fmt-btn" style="font-weight:800; font-size:15px;">B</button>
           <button type="button" id="fmtItalicBtn" class="fmt-btn" style="font-style:italic; font-size:15px;">I</button>
           <button type="button" id="fmtUnderlineBtn" class="fmt-btn" style="text-decoration:underline; font-size:15px;">U</button>
@@ -650,9 +645,8 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
   <div class="sheet">
     <h3 id="gramSheetTitle">Tambah Grammar</h3>
     <div class="field"><label>Judul topik</label><input type="text" id="gramTerm" placeholder="mis. Present Perfect Tense"></div>
-    <div class="field"><label>Pola/Rumus</label><input type="text" id="gramPola" placeholder="mis. S + have/has + V3"></div>
-    <div class="field"><label>Penjelasan</label><textarea id="gramPenjelasan" placeholder="Penjelasan singkat..."></textarea></div>
-    <div class="field"><label>Contoh kalimat</label><textarea id="gramContoh" placeholder="Contoh penggunaan..."></textarea></div>
+    <div id="gramPatternsList"></div>
+    <button type="button" class="btn ghost" id="gramAddPatternBtn" style="width:100%; margin-bottom:14px;">+ Tambah Pola</button>
     <div class="field"><label>Catatan/pengecualian (opsional)</label><textarea id="gramCatatan" placeholder="Hal yang sering keliru..."></textarea></div>
     <div class="sheet-actions">
       <button class="btn danger-text" id="gramDeleteBtn" style="display:none;">Hapus</button>
@@ -1665,6 +1659,10 @@ function openNoteEditor(note){
   document.getElementById('notesEditorMode').style.display='';
   document.getElementById('navbarNotes').style.display='none'; // sembunyikan navbar list
   updateFmtToolbarState();
+  requestAnimationFrame(()=>{
+    const navH = document.querySelector('#notesEditorMode .navbar').offsetHeight;
+    document.getElementById('noteToolbar').style.top = navH + 'px';
+  });
   setTimeout(()=>document.getElementById('noteTitle').focus(),50);
 }
 function closeNoteEditor(){
@@ -1718,8 +1716,6 @@ function updateFmtToolbarState(){
     document.getElementById('fmtAlignRightBtn').classList.toggle('active', document.queryCommandState('justifyRight'));
     document.getElementById('fmtBulletBtn').classList.toggle('active', document.queryCommandState('insertUnorderedList'));
     document.getElementById('fmtNumberBtn').classList.toggle('active', document.queryCommandState('insertOrderedList'));
-    const blockTag = (document.queryCommandValue('formatBlock')||'').toUpperCase();
-    document.getElementById('fmtBlockSelect').value = (blockTag==='H1'||blockTag==='H2') ? blockTag : 'P';
   }catch(e){ /* queryCommandState bisa gak didukung di browser tertentu, aman diabaikan */ }
 }
 function finApplyFmt(cmd, val){
@@ -1759,10 +1755,6 @@ document.getElementById('noteBody').addEventListener('change', e=>{
   else { line.classList.remove('checked'); e.target.removeAttribute('checked'); }
   document.getElementById('noteSaveHint').textContent='Menyimpan...';
   clearTimeout(noteSaveTimer); noteSaveTimer=setTimeout(persistNote,500);
-});
-document.getElementById('fmtBlockSelect').addEventListener('mousedown', e=>e.preventDefault());
-document.getElementById('fmtBlockSelect').addEventListener('change', e=>{
-  finApplyFmt('formatBlock', e.target.value==='P' ? 'P' : e.target.value);
 });
 document.getElementById('noteBody').addEventListener('keyup', updateFmtToolbarState);
 document.getElementById('noteBody').addEventListener('mouseup', updateFmtToolbarState);
@@ -1861,6 +1853,7 @@ function openKamusDetail(k){
   header.style.cssText='padding-bottom:16px; border-bottom:1px solid var(--line);';
 
   let tagLabel='', formsHtml='', artiHtml='', exampleHtml='', extraHtml='';
+  let skipGenericBody = false;
 
   if(k.type==='vocab'){
     tagLabel = k.wordClass||'Verb';
@@ -1905,13 +1898,20 @@ function openKamusDetail(k){
     }
   } else if(k.type==='grammar'){
     tagLabel = 'Grammar';
-    artiHtml = k.penjelasan||'';
-    if(k.pola){
-      extraHtml = `<div class="kamus-section">
-        <div class="kamus-section-label">Pola / Rumus</div>
-        <div class="kamus-example-card"><p style="font-style:normal; font-weight:700; font-size:16px; color:var(--accent);">${escapeHtml(k.pola)}</p></div>
-      </div>`;
-    }
+    skipGenericBody = true;
+    const patterns = kamusGrammarPatterns(k);
+    extraHtml = patterns.map((p,i)=>{
+      let block = `<div class="kamus-section">`;
+      block += `<div class="kamus-section-label">${patterns.length>1?'Pola '+(i+1):'Pola / Rumus'}</div>`;
+      if(p.pola) block += `<div class="kamus-example-card"><p style="font-style:normal; font-weight:700; font-size:16px; color:var(--accent);">${escapeHtml(p.pola)}</p></div>`;
+      if(p.penjelasan) block += `<div class="kamus-section-text" style="margin-top:8px;">${escapeHtml(p.penjelasan)}</div>`;
+      if(p.contoh){
+        const highlighted = p.contoh.replace(new RegExp(escapeHtml(k.term),'gi'), m=>`<strong>${m}</strong>`);
+        block += `<div class="kamus-example-card" style="margin-top:8px;"><p>${highlighted}</p></div>`;
+      }
+      block += `</div>`;
+      return block;
+    }).join('');
     if(k.catatan){
       extraHtml += `<div class="kamus-section">
         <div class="kamus-section-label">Catatan & Pengecualian</div>
@@ -1920,9 +1920,9 @@ function openKamusDetail(k){
     }
   }
 
-  // contoh kalimat — highlight kata utama dengan bold
+  // contoh kalimat — highlight kata utama dengan bold (grammar udah nampilin contoh per-pola sendiri di atas)
   const contohText = k.contoh || k.example || '';
-  if(contohText){
+  if(!skipGenericBody && contohText){
     const highlighted = contohText.replace(new RegExp(escapeHtml(k.term),'gi'), m=>`<strong>${m}</strong>`);
     exampleHtml = `<div class="kamus-section">
       <div class="kamus-section-label">Contoh kalimat</div>
@@ -1939,12 +1939,12 @@ function openKamusDetail(k){
 
   const body = document.createElement('div');
   body.innerHTML = `
-    <div class="kamus-section">
+    ${skipGenericBody ? '' : `<div class="kamus-section">
       <div class="kamus-section-label">Arti</div>
       <div class="kamus-section-text">${escapeHtml(artiHtml)}</div>
-    </div>
+    </div>`}
     ${extraHtml}
-    ${exampleHtml}
+    ${skipGenericBody ? '' : exampleHtml}
   `;
   content.appendChild(body);
 
@@ -2002,7 +2002,7 @@ function renderKamus(){
       if(k.type==='vocab'){ subLabel=[k.wordClass, (k.synonyms&&k.synonyms.length?k.synonyms.map(normSyn).map(s=>s.term).join(', '):'')].filter(Boolean).join(' · '); artiSnippet=k.arti||''; }
       else if(k.type==='frasa'){ subLabel=k.synonyms&&k.synonyms.length?k.synonyms.map(normSyn).map(s=>s.term).join(', '):''; artiSnippet=k.arti||''; }
       else if(k.type==='conjunction'){ subLabel=''; artiSnippet=k.kegunaan||''; }
-      else if(k.type==='grammar'){ subLabel=k.pola||''; artiSnippet=k.penjelasan||''; }
+      else if(k.type==='grammar'){ const gp=kamusGrammarPatterns(k)[0]||{}; subLabel=gp.pola||''; artiSnippet=gp.penjelasan||''; }
       item.innerHTML = `
         <div class="kamus-list-item-main">
           <div class="kamus-list-word">${escapeHtml(k.term)}${q?` <span style="font-size:10px;color:var(--ink-soft);font-weight:600;">· ${kamusTypeLabel(k.type)}</span>`:''}</div>
@@ -2152,31 +2152,78 @@ document.getElementById('conjDeleteBtn').addEventListener('click', ()=>{
 });
 
 let editingGramId = null;
+let gramPatterns = []; // [{id, pola, penjelasan, contoh}] — 1 topik grammar bisa punya beberapa pola
+// Data lama (sebelum fitur multi-pola) nyimpen pola/penjelasan/contoh langsung di level atas
+// entri, bukan array. Fungsi ini nyatuin keduanya biar kompatibel tanpa perlu migrasi data.
+function kamusGrammarPatterns(k){
+  if(Array.isArray(k.patterns) && k.patterns.length) return k.patterns;
+  if(k.pola || k.penjelasan || k.contoh) return [{pola:k.pola||'', penjelasan:k.penjelasan||'', contoh:k.contoh||''}];
+  return [];
+}
+function gramNewPatternId(){ return 'gp'+Date.now()+Math.random().toString(36).slice(2,6); }
+function gramRenderPatterns(){
+  const wrap = document.getElementById('gramPatternsList');
+  wrap.innerHTML = gramPatterns.map((p,i)=>`
+    <div class="fin-report-card" data-id="${p.id}">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <strong style="font-size:12.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.3px;">Pola ${i+1}</strong>
+        ${gramPatterns.length>1?`<button type="button" data-remove="${p.id}" style="background:none; border:none; color:var(--danger); font-size:12.5px; font-weight:700; cursor:pointer;">Hapus</button>`:''}
+      </div>
+      <div class="field"><label>Pola/Rumus</label><input type="text" class="gram-pola" placeholder="mis. S + have/has + V3" value="${escapeHtml(p.pola)}"></div>
+      <div class="field"><label>Penjelasan</label><textarea class="gram-penjelasan" placeholder="Penjelasan singkat...">${escapeHtml(p.penjelasan)}</textarea></div>
+      <div class="field"><label>Contoh kalimat (opsional)</label><textarea class="gram-contoh" placeholder="Contoh penggunaan...">${escapeHtml(p.contoh)}</textarea></div>
+    </div>
+  `).join('');
+  wrap.querySelectorAll('[data-id]').forEach(card=>{
+    const p = gramPatterns.find(x=>x.id===card.dataset.id); if(!p) return;
+    card.querySelector('.gram-pola').addEventListener('input', e=>{ p.pola=e.target.value; });
+    card.querySelector('.gram-penjelasan').addEventListener('input', e=>{ p.penjelasan=e.target.value; });
+    card.querySelector('.gram-contoh').addEventListener('input', e=>{ p.contoh=e.target.value; });
+  });
+  wrap.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      gramPatterns = gramPatterns.filter(p=>p.id!==btn.dataset.remove);
+      gramRenderPatterns();
+    });
+  });
+}
+document.getElementById('gramAddPatternBtn').addEventListener('click', ()=>{
+  gramPatterns.push({id:gramNewPatternId(), pola:'', penjelasan:'', contoh:''});
+  gramRenderPatterns();
+});
 function openGramSheet(k){
   editingGramId = k? k.id : null;
   document.getElementById('gramSheetTitle').textContent = k?'Edit Grammar':'Tambah Grammar';
   document.getElementById('gramTerm').value = k?k.term:'';
-  document.getElementById('gramPola').value = k?(k.pola||''):'';
-  document.getElementById('gramPenjelasan').value = k?(k.penjelasan||''):'';
-  document.getElementById('gramContoh').value = k?(k.contoh||''):'';
   document.getElementById('gramCatatan').value = k?(k.catatan||''):'';
+  gramPatterns = k ? kamusGrammarPatterns(k).map(p=>({id:gramNewPatternId(), pola:p.pola||'', penjelasan:p.penjelasan||'', contoh:p.contoh||''})) : [];
+  if(!gramPatterns.length) gramPatterns.push({id:gramNewPatternId(), pola:'', penjelasan:'', contoh:''});
+  gramRenderPatterns();
   document.getElementById('gramDeleteBtn').style.display = k?'':'none';
   document.getElementById('gramOverlay').classList.add('show');
 }
 document.getElementById('gramCancelBtn').addEventListener('click', ()=>document.getElementById('gramOverlay').classList.remove('show'));
 document.getElementById('gramOverlay').addEventListener('click', e=>{ if(e.target.id==='gramOverlay') e.currentTarget.classList.remove('show'); });
 document.getElementById('gramSaveBtn').addEventListener('click', ()=>{
-  const term=document.getElementById('gramTerm').value.trim(), pola=document.getElementById('gramPola').value.trim();
-  const penjelasan=document.getElementById('gramPenjelasan').value.trim(), contoh=document.getElementById('gramContoh').value.trim(), catatan=document.getElementById('gramCatatan').value.trim();
-  if(!term||!penjelasan){ showToast('Isi judul dan penjelasan dulu ya'); return; }
-  if(editingGramId){ const k=DB.kamus.find(x=>x.id===editingGramId); Object.assign(k,{term,pola,penjelasan,contoh,catatan}); }
-  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'grammar', term, pola, penjelasan, contoh, catatan, createdAt:Date.now()});
+  const term=document.getElementById('gramTerm').value.trim();
+  const catatan=document.getElementById('gramCatatan').value.trim();
+  const patterns = gramPatterns
+    .map(p=>({pola:p.pola.trim(), penjelasan:p.penjelasan.trim(), contoh:p.contoh.trim()}))
+    .filter(p=>p.pola || p.penjelasan || p.contoh);
+  if(!term || !patterns.length || !patterns[0].penjelasan){ showToast('Isi judul & minimal 1 pola lengkap dulu ya'); return; }
+  if(editingGramId){
+    const k=DB.kamus.find(x=>x.id===editingGramId);
+    Object.assign(k,{term, patterns, catatan});
+    delete k.pola; delete k.penjelasan; delete k.contoh; // bersihin field format lama biar gak nyangkut dobel
+  }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'grammar', term, patterns, catatan, createdAt:Date.now()});
   saveDB(); document.getElementById('gramOverlay').classList.remove('show'); backToKamusList(); renderKamus();
 });
 document.getElementById('gramDeleteBtn').addEventListener('click', ()=>{
   const idx=DB.kamus.findIndex(k=>k.id===editingGramId); if(idx>-1) DB.kamus.splice(idx,1);
   saveDB(); document.getElementById('gramOverlay').classList.remove('show'); backToKamusList(); renderKamus();
 });
+
 
 /* ================= progress ================= */
 function renderProgress(){

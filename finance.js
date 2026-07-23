@@ -1145,6 +1145,15 @@ document.getElementById('finCatDoneBtn').addEventListener('click', ()=>{
 document.getElementById('finCatOverlay').addEventListener('click', e=>{ if(e.target.id==='finCatOverlay') e.currentTarget.classList.remove('show'); });
 
 /* ---------------- Detail view (read-only) sebelum edit — dipakai Pribadi & Pengeluaran Eksa/Sawit ---------------- */
+// Ubah URL di teks catatan jadi link yang bisa dipencet (mis. link Google Drive nota),
+// sisanya tetep di-escape normal biar aman dari HTML injection.
+function finLinkifyNote(text){
+  const parts = text.split(/(https?:\/\/[^\s<]+)/g);
+  return parts.map((part, i)=>{
+    if(i%2===1) return `<a href="${escapeHtml(part)}" target="_blank" rel="noopener noreferrer">${escapeHtml(part)}</a>`;
+    return escapeHtml(part);
+  }).join('');
+}
 let finTxDetailEditCallback = null;
 function openFinTxDetailView(t, editCallback){
   finTxDetailEditCallback = editCallback;
@@ -1169,7 +1178,7 @@ function openFinTxDetailView(t, editCallback){
     ${t.type ? `<div class="fin-detail-row"><span>Tipe</span><span>${t.type==='out'?'Pengeluaran':'Pemasukan'}</span></div>` : ''}
     ${(!hasItems && t.category) ? `<div class="fin-detail-row"><span>Kategori</span><span>${escapeHtml(t.category)}</span></div>` : ''}
     ${itemsHtml}
-    ${t.note ? `<div class="fin-detail-note">${escapeHtml(t.note)}</div>` : ''}
+    ${t.note ? `<div class="fin-detail-note">${finLinkifyNote(t.note)}</div>` : ''}
     ${thumbs ? `<div class="fin-item-thumb-row" style="margin-top:10px;">${thumbs}</div>` : ''}
     <div class="fin-detail-row" style="margin-top:10px; font-weight:700;">
       <span>Total</span><span style="color:${t.type==='out'?'var(--danger)':'var(--positive)'}">${t.type==='out'?'-':'+'}${finFmt(t.amount)}</span>
