@@ -26,12 +26,12 @@
   --ig-gradient:linear-gradient(135deg,#5B51D8,#A23CC4,#E1306C,#FD8D32);
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html{height:100%; overflow:hidden;}
-body{height:100%; width:100%; overflow:hidden; position:fixed; overscroll-behavior:none; margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; transition:background .2s ease,color .2s ease;}
+html,body{height:100%;}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:env(safe-area-inset-bottom); transition:background .2s ease,color .2s ease; overscroll-behavior-y:none;}
 .serif{font-family:'Inter',sans-serif;}
 .mono{font-family:'JetBrains Mono',monospace;}
 button,input,select,textarea{font-family:inherit;}
-#app{max-width:560px; margin:0 auto; position:absolute; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:env(safe-area-inset-bottom); display:flex; flex-direction:column;}
+#app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
 
 /* tap/press feedback like IG */
 button, .row, .chip, .gram-card, .icon-btn, .day-select-btn, .tab{
@@ -57,7 +57,7 @@ button:active, .row:active, .chip:active, .gram-card:active, .icon-btn:active, .
 .day-select-btn svg{width:15px;height:15px; color:var(--ink-soft);}
 .search-bar{margin-top:10px; display:flex; align-items:center; gap:6px; background:var(--surface-2); border-radius:14px; padding:9px 14px;}
 .search-bar svg{width:15px;height:15px; color:var(--ink-soft); flex:0 0 auto;}
-.search-bar input{border:none; background:none; outline:none; font-size:15px; color:var(--ink); flex:1; min-width:0;}
+.search-bar input{border:none; background:none; outline:none; font-size:16px; color:var(--ink); flex:1; min-width:0;}
 .segmented{display:flex; background:var(--surface-2); border-radius:14px; padding:3px; margin-top:10px;}
 .segmented button{flex:1; border:none; background:none; padding:8px 4px; border-radius:11px; font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer;}
 .segmented button.active{background:var(--surface); color:var(--ink); box-shadow:0 2px 8px rgba(0,0,0,.1);}
@@ -127,7 +127,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .editor-toolbar button.fmt-btn{padding:8px 12px;}
 .editor-toolbar button.fmt-btn.active{background:var(--ig-gradient); color:#fff;}
 .editor-toolbar .toolbar-sep{width:1px; align-self:stretch; background:var(--line); margin:2px 4px;}
-.editor-toolbar select.fmt-select{border:none; background:var(--surface-2); color:var(--ink); padding:9px 10px; border-radius:14px; font-size:13px; font-weight:600; cursor:pointer;}
+.editor-toolbar select.fmt-select{border:none; background:var(--surface-2); color:var(--ink); padding:9px 10px; border-radius:14px; font-size:16px; font-weight:600; cursor:pointer;}
 #noteBody h1{font-size:22px; font-weight:700; margin:14px 0 6px;}
 #noteBody h2{font-size:17.5px; font-weight:700; margin:12px 0 5px;}
 #noteBody ul, #noteBody ol{padding-left:22px; margin:8px 0;}
@@ -138,7 +138,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 #noteBody .chk-text{flex:1; min-width:0;}
 #noteTitle{width:100%; border:none; background:none; font-size:26px; font-weight:800; color:var(--ink); padding:4px 2px 6px; outline:none;}
 .editor-toolbar{display:flex; align-items:center; gap:8px; padding:8px 0 12px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin-bottom:12px; position:sticky; z-index:25; background:var(--bg);}
-#noteBody{width:100%; min-height:340px; border:none; outline:none; background:none; color:var(--ink); font-size:15px; line-height:1.65; padding:2px;}
+#noteBody{width:100%; min-height:340px; border:none; outline:none; background:none; color:var(--ink); font-size:16px; line-height:1.65; padding:2px;}
 #noteBody img{max-width:100%; border-radius:10px; display:block; margin:10px 0;}
 #noteBody audio{width:100%; margin:10px 0;}
 #noteBody:empty:before{content:attr(data-placeholder); color:var(--ink-soft);}
@@ -149,7 +149,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .jenis-item-name{flex:1; font-size:15px; font-weight:500;}
 .jenis-item-edit{width:30px;height:30px; border:none; background:var(--surface-2); border-radius:8px; color:var(--ink-soft); cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center;}
 .jenis-item-del{width:30px;height:30px; border:none; background:none; border-radius:8px; color:var(--danger); cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center;}
-.jenis-item input{flex:1; padding:7px 10px; border-radius:10px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;}
+.jenis-item input{flex:1; padding:7px 10px; border-radius:10px; border:none; background:var(--surface-2); color:var(--ink); font-size:16px;}
 .kamus-term{font-size:15px; font-weight:700;}
 .kamus-tag{font-size:10px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:6px; text-transform:uppercase; letter-spacing:.3px; flex:0 0 auto;}
 .kamus-arti{font-size:13px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
@@ -204,7 +204,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .sheet h3{margin:0 0 14px; font-size:18px; font-family:'Inter',sans-serif;}
 .field{margin-bottom:13px;}
 .field label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;}
-.field input,.field select,.field textarea{width:100%; padding:12px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;}
+.field input,.field select,.field textarea{width:100%; padding:12px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:16px;}
 .field textarea{min-height:65px; resize:vertical;}
 .field-hint{font-size:11.5px; color:var(--ink-soft); margin-top:5px;}
 .sheet-actions{display:flex; gap:10px; margin-top:8px;}
@@ -223,7 +223,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .syn-item{display:flex; flex-direction:column; gap:6px; padding:10px; background:var(--surface-2); border-radius:14px;}
 .syn-item-row{display:flex; gap:6px; align-items:center;}
 .syn-item-row input{flex:1;}
-.syn-item input,.syn-item textarea{padding:9px 11px; border-radius:10px; border:none; background:var(--surface); color:var(--ink); font-size:13.5px; width:100%;}
+.syn-item input,.syn-item textarea{padding:9px 11px; border-radius:10px; border:none; background:var(--surface); color:var(--ink); font-size:16px; width:100%;}
 .syn-item textarea{min-height:34px; resize:vertical; font-style:italic;}
 .syn-remove{width:30px;height:30px; border:none; background:var(--surface); border-radius:8px; color:var(--danger); cursor:pointer; flex:0 0 auto;}
 .syn-add{margin-top:6px; padding:9px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; width:100%;}
@@ -296,7 +296,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 
 /* Pengeluaran Eksa: rincian barang + foto nota */
 .fin-item-row{display:grid; grid-template-columns:1fr 74px 52px 22px; gap:6px; align-items:center; margin-bottom:8px;}
-.fin-item-row input{padding:10px 10px; border-radius:10px; border:none; background:var(--surface-2); color:var(--ink); font-size:13px; width:100%; box-sizing:border-box;}
+.fin-item-row input{padding:10px 10px; border-radius:10px; border:none; background:var(--surface-2); color:var(--ink); font-size:16px; width:100%; box-sizing:border-box;}
 .fin-item-subtotal{font-size:11px; color:var(--ink-soft); text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .fin-item-remove{background:none; border:none; color:var(--danger); font-size:18px; line-height:1; cursor:pointer; padding:4px;}
 .fin-detail-row{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:14px;}
@@ -553,7 +553,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
     <h3>Kelola Jenis Kegiatan</h3>
     <div id="jenisList" style="margin-bottom:14px;"></div>
     <div style="display:flex; gap:8px;">
-      <input type="text" id="jenisNewInput" placeholder="Tambah jenis baru..." style="flex:1; padding:11px 13px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;">
+      <input type="text" id="jenisNewInput" placeholder="Tambah jenis baru..." style="flex:1; padding:11px 13px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:16px;">
       <button class="btn primary" id="jenisAddBtn" style="flex:0 0 auto; width:auto; padding:11px 16px;">Tambah</button>
     </div>
     <div class="sheet-actions" style="margin-top:12px;">
@@ -810,7 +810,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
   <div class="sheet">
     <h3>Kelola Kategori</h3>
     <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <input type="text" id="finCatNewInput" placeholder="Nama kategori baru..." style="flex:1; padding:12px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:14.5px;">
+      <input type="text" id="finCatNewInput" placeholder="Nama kategori baru..." style="flex:1; padding:12px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink); font-size:16px;">
       <button class="btn primary" id="finCatAddBtn" style="padding:0 18px;">+</button>
     </div>
     <div class="option-list" id="finCatManageList"></div>
