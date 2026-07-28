@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=overlays-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rutin">
@@ -26,12 +26,12 @@
   --ig-gradient:linear-gradient(135deg,#5B51D8,#A23CC4,#E1306C,#FD8D32);
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-html,body{height:100%; overflow:hidden;}
-body{margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; transition:background .2s ease,color .2s ease; overscroll-behavior-y:none;}
+html,body{height:100%;}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:env(safe-area-inset-bottom); transition:background .2s ease,color .2s ease; overscroll-behavior-y:none;}
 .serif{font-family:'Inter',sans-serif;}
 .mono{font-family:'JetBrains Mono',monospace;}
 button,input,select,textarea{font-family:inherit;}
-#app{max-width:560px; margin:0 auto; position:fixed; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:env(safe-area-inset-bottom); display:flex; flex-direction:column;}
+#app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
 
 /* tap/press feedback like IG */
 button, .row, .chip, .gram-card, .icon-btn, .day-select-btn, .tab{
