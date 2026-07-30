@@ -227,6 +227,8 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
 .syn-item textarea{min-height:34px; resize:vertical; font-style:italic;}
 .syn-remove{width:30px;height:30px; border:none; background:var(--surface); border-radius:8px; color:var(--danger); cursor:pointer; flex:0 0 auto;}
 .syn-add{margin-top:6px; padding:9px 14px; border-radius:14px; border:none; background:var(--surface-2); color:var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer; width:100%;}
+.syn-toggle-extra{background:none; border:none; color:var(--accent); font-size:12.5px; font-weight:600; cursor:pointer; padding:2px 0; text-align:left;}
+.syn-extra{display:flex; flex-direction:column; gap:6px;}
 
 /* KEUANGAN */
 .fin-month-nav{display:flex; align-items:center; justify-content:space-between; padding:4px 2px 14px;}
@@ -599,6 +601,7 @@ nav.tabs{position:fixed; bottom:0; left:0; right:0; z-index:30; background:var(-
       <div class="field"><label>V3 (past participle)</label><input type="text" id="vocabV3" placeholder="mis. run"></div>
     </div>
     <div class="field"><label>Kata lain dengan arti sama</label><div class="syn-list" id="vocabSynList"></div><button class="syn-add" id="vocabSynAddBtn" type="button">+ Tambah kata lain</button></div>
+    <div class="field"><label>Bentuk Kata Lain <span style="font-weight:400;">(opsional — mis. beauty → beautiful, beautify)</span></label><div class="syn-list" id="vocabFormsList"></div><button class="syn-add" id="vocabFormsAddBtn" type="button">+ Tambah bentuk lain</button></div>
     <div class="field"><label>Arti</label><textarea id="vocabArti" placeholder="Artinya..."></textarea></div>
     <div class="field"><label>Contoh kalimat <span style="font-weight:400;">(opsional)</span></label><textarea id="vocabContoh" placeholder="Contoh penggunaan kata ini..."></textarea></div>
     <div class="sheet-actions">
@@ -1874,6 +1877,15 @@ function openKamusDetail(k){
         </div>`).join('')}
       </div>`;
     }
+    if(k.wordForms && k.wordForms.length){
+      extraHtml += `<div class="kamus-section">
+        <div class="kamus-section-label">Bentuk Kata Lain</div>
+        ${k.wordForms.map(f=>`<div class="kamus-syn-item">
+          <div class="kamus-syn-term">${escapeHtml(f.bentuk)} <span style="font-weight:400; color:var(--ink-soft); font-size:11.5px; text-transform:uppercase;">${escapeHtml(f.jenisKata||'')}</span></div>
+          ${f.arti?`<div class="kamus-syn-note">${escapeHtml(f.arti)}</div>`:''}
+        </div>`).join('')}
+      </div>`;
+    }
   } else if(k.type==='frasa'){
     tagLabel = 'Frasa';
     artiHtml = k.arti||'';
@@ -2031,22 +2043,53 @@ function renderVocabSynList(){
   const wrap=document.getElementById('vocabSynList'); wrap.innerHTML='';
   vocabSynonymList.forEach((val,idx)=>{
     const row=document.createElement('div'); row.className='syn-item';
+    const hasExtra = !!(val.note || val.example);
     row.innerHTML = `
       <div class="syn-item-row">
         <input type="text" class="syn-term" value="${escapeHtml(val.term)}" placeholder="kata lain...">
         <button class="syn-remove" type="button">&times;</button>
       </div>
-      <input type="text" class="syn-note" value="${escapeHtml(val.note||'')}" placeholder="Keterangan pemakaian (opsional)">
-      <textarea class="syn-example" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(val.example||'')}</textarea>
+      <button type="button" class="syn-toggle-extra" style="display:${hasExtra?'none':''};">+ Tambah keterangan & contoh</button>
+      <div class="syn-extra" style="display:${hasExtra?'flex':'none'};">
+        <input type="text" class="syn-note" value="${escapeHtml(val.note||'')}" placeholder="Keterangan pemakaian (opsional)">
+        <textarea class="syn-example" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(val.example||'')}</textarea>
+      </div>
     `;
     row.querySelector('.syn-term').addEventListener('input', e=>{ vocabSynonymList[idx].term=e.target.value; });
     row.querySelector('.syn-note').addEventListener('input', e=>{ vocabSynonymList[idx].note=e.target.value; });
     row.querySelector('.syn-example').addEventListener('input', e=>{ vocabSynonymList[idx].example=e.target.value; });
     row.querySelector('.syn-remove').addEventListener('click', ()=>{ vocabSynonymList.splice(idx,1); renderVocabSynList(); });
+    row.querySelector('.syn-toggle-extra').addEventListener('click', e=>{
+      row.querySelector('.syn-extra').style.display='flex';
+      e.target.style.display='none';
+    });
     wrap.appendChild(row);
   });
 }
 document.getElementById('vocabSynAddBtn').addEventListener('click', ()=>{ vocabSynonymList.push({term:'',note:'',example:''}); renderVocabSynList(); });
+
+let vocabWordFormsList = [];
+const WORD_CLASS_OPTIONS = ['Verb','Noun','Adjective','Conjunction','Adverb','Preposition'];
+function renderVocabFormsList(){
+  const wrap=document.getElementById('vocabFormsList'); wrap.innerHTML='';
+  vocabWordFormsList.forEach((val,idx)=>{
+    const row=document.createElement('div'); row.className='syn-item';
+    row.innerHTML = `
+      <div class="syn-item-row">
+        <input type="text" class="form-bentuk" value="${escapeHtml(val.bentuk)}" placeholder="mis. Beautiful">
+        <select class="form-jenis" style="flex:0 0 auto; width:auto; padding:9px 8px; border:none; border-radius:10px; background:var(--surface); color:var(--ink); font-size:13px;">${WORD_CLASS_OPTIONS.map(c=>`<option value="${c}" ${val.jenisKata===c?'selected':''}>${c}</option>`).join('')}</select>
+        <button class="syn-remove" type="button">&times;</button>
+      </div>
+      <input type="text" class="form-arti" value="${escapeHtml(val.arti||'')}" placeholder="Arti singkat (opsional)">
+    `;
+    row.querySelector('.form-bentuk').addEventListener('input', e=>{ vocabWordFormsList[idx].bentuk=e.target.value; });
+    row.querySelector('.form-jenis').addEventListener('change', e=>{ vocabWordFormsList[idx].jenisKata=e.target.value; });
+    row.querySelector('.form-arti').addEventListener('input', e=>{ vocabWordFormsList[idx].arti=e.target.value; });
+    row.querySelector('.syn-remove').addEventListener('click', ()=>{ vocabWordFormsList.splice(idx,1); renderVocabFormsList(); });
+    wrap.appendChild(row);
+  });
+}
+document.getElementById('vocabFormsAddBtn').addEventListener('click', ()=>{ vocabWordFormsList.push({bentuk:'',jenisKata:'Noun',arti:''}); renderVocabFormsList(); });
 function openVocabSheet(k){
   editingVocabId = k? k.id : null;
   document.getElementById('vocabSheetTitle').textContent = k?'Edit Word':'Tambah Word';
@@ -2059,6 +2102,8 @@ function openVocabSheet(k){
   document.getElementById('vocabContoh').value = k?(k.contoh||''):'';
   vocabSynonymList = k && k.synonyms ? k.synonyms.map(normSyn) : [];
   renderVocabSynList();
+  vocabWordFormsList = k && Array.isArray(k.wordForms) ? k.wordForms.map(f=>({bentuk:f.bentuk||'', jenisKata:f.jenisKata||'Noun', arti:f.arti||''})) : [];
+  renderVocabFormsList();
   document.getElementById('vocabDeleteBtn').style.display = k?'':'none';
   document.getElementById('vocabOverlay').classList.add('show');
 }
@@ -2070,8 +2115,9 @@ document.getElementById('vocabSaveBtn').addEventListener('click', ()=>{
   const contoh=document.getElementById('vocabContoh').value.trim();
   if(!term||!arti){ showToast('Isi kata dan arti dulu ya'); return; }
   const synonyms = vocabSynonymList.map(s=>({term:s.term.trim(), note:(s.note||'').trim(), example:(s.example||'').trim()})).filter(s=>s.term);
-  if(editingVocabId){ const k=DB.kamus.find(x=>x.id===editingVocabId); Object.assign(k,{term,wordClass,arti,v2,v3,contoh,synonyms}); }
-  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'vocab', term, wordClass, arti, v2, v3, contoh, synonyms, createdAt:Date.now()});
+  const wordForms = vocabWordFormsList.map(f=>({bentuk:f.bentuk.trim(), jenisKata:f.jenisKata, arti:(f.arti||'').trim()})).filter(f=>f.bentuk);
+  if(editingVocabId){ const k=DB.kamus.find(x=>x.id===editingVocabId); Object.assign(k,{term,wordClass,arti,v2,v3,contoh,synonyms,wordForms}); }
+  else DB.kamus.push({id:'k'+Date.now()+Math.random().toString(36).slice(2,6), type:'vocab', term, wordClass, arti, v2, v3, contoh, synonyms, wordForms, createdAt:Date.now()});
   saveDB(); document.getElementById('vocabOverlay').classList.remove('show'); backToKamusList(); renderKamus();
 });
 document.getElementById('vocabDeleteBtn').addEventListener('click', ()=>{
@@ -2084,18 +2130,26 @@ function renderSynList(){
   const wrap=document.getElementById('synList'); wrap.innerHTML='';
   synonymList.forEach((val,idx)=>{
     const row=document.createElement('div'); row.className='syn-item';
+    const hasExtra = !!(val.note || val.example);
     row.innerHTML = `
       <div class="syn-item-row">
         <input type="text" class="syn-term" value="${escapeHtml(val.term)}" placeholder="frasa lain...">
         <button class="syn-remove" type="button">&times;</button>
       </div>
-      <input type="text" class="syn-note" value="${escapeHtml(val.note||'')}" placeholder="Keterangan pemakaian (opsional)">
-      <textarea class="syn-example" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(val.example||'')}</textarea>
+      <button type="button" class="syn-toggle-extra" style="display:${hasExtra?'none':''};">+ Tambah keterangan & contoh</button>
+      <div class="syn-extra" style="display:${hasExtra?'flex':'none'};">
+        <input type="text" class="syn-note" value="${escapeHtml(val.note||'')}" placeholder="Keterangan pemakaian (opsional)">
+        <textarea class="syn-example" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(val.example||'')}</textarea>
+      </div>
     `;
     row.querySelector('.syn-term').addEventListener('input', e=>{ synonymList[idx].term=e.target.value; });
     row.querySelector('.syn-note').addEventListener('input', e=>{ synonymList[idx].note=e.target.value; });
     row.querySelector('.syn-example').addEventListener('input', e=>{ synonymList[idx].example=e.target.value; });
     row.querySelector('.syn-remove').addEventListener('click', ()=>{ synonymList.splice(idx,1); renderSynList(); });
+    row.querySelector('.syn-toggle-extra').addEventListener('click', e=>{
+      row.querySelector('.syn-extra').style.display='flex';
+      e.target.style.display='none';
+    });
     wrap.appendChild(row);
   });
 }
@@ -2164,14 +2218,17 @@ function gramNewPatternId(){ return 'gp'+Date.now()+Math.random().toString(36).s
 function gramRenderPatterns(){
   const wrap = document.getElementById('gramPatternsList');
   wrap.innerHTML = gramPatterns.map((p,i)=>`
-    <div class="fin-report-card" data-id="${p.id}">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-        <strong style="font-size:12.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.3px;">Pola ${i+1}</strong>
-        ${gramPatterns.length>1?`<button type="button" data-remove="${p.id}" style="background:none; border:none; color:var(--danger); font-size:12.5px; font-weight:700; cursor:pointer;">Hapus</button>`:''}
+    ${gramPatterns.length>1?`<div class="fin-section-label" style="margin:14px 0 6px;">Pola ${i+1}</div>`:''}
+    <div class="syn-item" data-id="${p.id}">
+      <div class="syn-item-row">
+        <input type="text" class="gram-pola" placeholder="Pola/Rumus, mis. S + have/has + V3" value="${escapeHtml(p.pola)}">
+        ${gramPatterns.length>1?`<button type="button" class="syn-remove" data-remove="${p.id}">&times;</button>`:''}
       </div>
-      <div class="field"><label>Pola/Rumus</label><input type="text" class="gram-pola" placeholder="mis. S + have/has + V3" value="${escapeHtml(p.pola)}"></div>
-      <div class="field"><label>Penjelasan</label><textarea class="gram-penjelasan" placeholder="Penjelasan singkat...">${escapeHtml(p.penjelasan)}</textarea></div>
-      <div class="field"><label>Contoh kalimat (opsional)</label><textarea class="gram-contoh" placeholder="Contoh penggunaan...">${escapeHtml(p.contoh)}</textarea></div>
+      <textarea class="gram-penjelasan" rows="2" style="font-style:normal;" placeholder="Penjelasan singkat...">${escapeHtml(p.penjelasan)}</textarea>
+      <button type="button" class="syn-toggle-extra" style="display:${p.contoh?'none':''};">+ Tambah contoh kalimat</button>
+      <div class="syn-extra" style="display:${p.contoh?'flex':'none'};">
+        <textarea class="gram-contoh" rows="1" placeholder="Contoh kalimat (opsional)">${escapeHtml(p.contoh)}</textarea>
+      </div>
     </div>
   `).join('');
   wrap.querySelectorAll('[data-id]').forEach(card=>{
@@ -2179,6 +2236,11 @@ function gramRenderPatterns(){
     card.querySelector('.gram-pola').addEventListener('input', e=>{ p.pola=e.target.value; });
     card.querySelector('.gram-penjelasan').addEventListener('input', e=>{ p.penjelasan=e.target.value; });
     card.querySelector('.gram-contoh').addEventListener('input', e=>{ p.contoh=e.target.value; });
+    const toggleBtn = card.querySelector('.syn-toggle-extra');
+    if(toggleBtn) toggleBtn.addEventListener('click', e=>{
+      card.querySelector('.syn-extra').style.display='flex';
+      e.target.style.display='none';
+    });
   });
   wrap.querySelectorAll('[data-remove]').forEach(btn=>{
     btn.addEventListener('click', ()=>{

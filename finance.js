@@ -1166,7 +1166,10 @@ function openFinTxDetailView(t, editCallback){
   if(hasItems){
     itemsHtml = t.items.map(it=>`
       <div class="fin-detail-item-row">
-        <span>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</span>
+        <div>
+          <div>${escapeHtml(it.nama||'Barang')}${it.jumlah!==1?' × '+it.jumlah:''}</div>
+          ${it.jumlah!==1?`<div style="font-size:11px; color:var(--ink-soft); opacity:.8; margin-top:1px;">@${finFmt(Number(it.harga)||0)}</div>`:''}
+        </div>
         <span>${finFmt((Number(it.harga)||0)*(Number(it.jumlah)||0))}</span>
       </div>
     `).join('');
