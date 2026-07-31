@@ -259,6 +259,19 @@ async function finAddHm(unitId, tgl, hmAwal, hmAkhir){
   catch(e){ finHandleSaveError(e, 'hm-add', {unitId, id:entry.id, tgl, hmAwal:entry.hmAwal, hmAkhir:entry.hmAkhir}); }
   return entry;
 }
+// Endpoint hm-add itu upsert-by-id (kalau id-nya udah ada, ke-timpa bukan ke-duplikat) — jadi
+// edit entri lama tinggal manggil ulang pakai id yang sama, gak perlu endpoint baru.
+async function finUpdateHm(unitId, id, tgl, hmAwal, hmAkhir){
+  const entry = { id, tgl, hmAwal:Number(hmAwal), hmAkhir:Number(hmAkhir), dur:Math.round((Number(hmAkhir)-Number(hmAwal))*10)/10 };
+  const all = finGetCacheHm(); all[unitId] = all[unitId]||[];
+  const idx = all[unitId].findIndex(r=>r.id===id);
+  if(idx>-1) all[unitId][idx]=entry; else all[unitId].push(entry);
+  all[unitId].sort((a,b)=>a.tgl.localeCompare(b.tgl)); finSetCacheHm(all);
+  const vaultId = finGetVaultId();
+  try{ await finApiRaw('hm-add', {vaultId, unitId, id, tgl, hmAwal:entry.hmAwal, hmAkhir:entry.hmAkhir}); }
+  catch(e){ finHandleSaveError(e, 'hm-add', {unitId, id, tgl, hmAwal:entry.hmAwal, hmAkhir:entry.hmAkhir}); }
+  return entry;
+}
 async function finDeleteHm(unitId, id){
   const all = finGetCacheHm(); all[unitId] = (all[unitId]||[]).filter(r=>r.id!==id); finSetCacheHm(all);
   const vaultId = finGetVaultId();
@@ -1505,12 +1518,16 @@ function renderFinEksa(){
   else renderFinEksaRate(body);
 }
 
+let finEditingHmId = null;
 function renderFinEksaInput(body){
   const unitId = finActiveEksaUnit;
   const unit = finGetCacheUnits().find(u=>u.id===unitId) || {};
   const accounts = finGetCacheAccounts();
   const rows = finGetHmForUnit(unitId);
   const lastRow = rows[rows.length-1];
+  if(finEditingHmId && !rows.find(r=>r.id===finEditingHmId)) finEditingHmId = null;
+  const isEditing = !!finEditingHmId;
+  const editingRow = isEditing ? rows.find(r=>r.id===finEditingHmId) : null;
   const today = finHmLastDate || finTodayStr();
   const accOptions = '<option value="">— Belum dipilih —</option>' + accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   body.innerHTML = `
@@ -1518,18 +1535,22 @@ function renderFinEksaInput(body){
     <div class="field"><label>Uang sewa masuk ke akun</label><select id="finHmIncomeAcc">${accOptions}</select></div>
     <div class="field"><label>Gaji operator dibayar dari akun</label><select id="finHmSalaryAcc">${accOptions}</select></div>
     <div class="field-hint" style="margin-bottom:16px;">Nominalnya tetap otomatis dari hasil hitungan HM &amp; rate — ini cuma nandain duitnya lewat akun yang mana.</div>
-    <div class="fin-section-label">Input HM Harian</div>
-    <div class="field"><label>Tanggal</label><input type="date" id="finHmTgl" value="${today}"></div>
+    <div class="fin-section-label" id="finHmFormLabel">${isEditing?'Edit HM':'Input HM Harian'}</div>
+    <div class="field"><label>Tanggal</label><input type="date" id="finHmTgl" value="${isEditing?editingRow.tgl:today}"></div>
     <div class="row2" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-      <div class="field"><label>HM Awal</label><input type="number" step="0.1" id="finHmAwal" placeholder="isi manual" ${lastRow?'readonly':''} value="${lastRow?lastRow.hmAkhir:''}" style="${lastRow?'color:var(--positive);':''}"></div>
-      <div class="field"><label>HM Akhir</label><input type="number" step="0.1" id="finHmAkhir" placeholder="0.0"></div>
+      <div class="field"><label>HM Awal</label><input type="number" step="0.1" id="finHmAwal" placeholder="isi manual" value="${isEditing?editingRow.hmAwal:(lastRow?lastRow.hmAkhir:'')}"></div>
+      <div class="field"><label>HM Akhir</label><input type="number" step="0.1" id="finHmAkhir" placeholder="0.0" value="${isEditing?editingRow.hmAkhir:''}"></div>
     </div>
     <div class="fin-total-card" style="margin-bottom:14px;">
       <div><div class="fin-total-label">Durasi</div><div class="fin-total-val" id="finHmDurPreview" style="font-size:15px;">— HM</div></div>
       <div><div class="fin-total-label">Hari Kerja Bulan Ini</div><div class="fin-total-val" id="finHmHariPreview" style="font-size:15px;">—</div></div>
     </div>
-    <button class="btn primary" id="finHmSaveBtn" style="width:100%; margin-bottom:20px;">Simpan</button>
-    <div class="field-hint" style="margin-bottom:10px;">Riwayat HM terakhir</div>
+    <div style="display:flex; gap:10px; margin-bottom:20px;">
+      <button class="btn primary" id="finHmSaveBtn" style="flex:1;">${isEditing?'Update':'Simpan'}</button>
+      <button class="btn ghost" id="finHmCancelEditBtn" style="display:${isEditing?'':'none'}; flex:0 0 auto;">Batal Edit</button>
+    </div>
+    <div class="field-hint" style="margin-bottom:10px;">Riwayat HM</div>
+    <div id="finHmMonthNavWrap"></div>
     <div id="finHmHistory"></div>
   `;
   document.getElementById('finHmIncomeAcc').value = unit.incomeAccountId||'';
@@ -1550,38 +1571,74 @@ function renderFinEksaInput(body){
     const dur = akhir>awal ? finFmtN(akhir-awal) : 0;
     document.getElementById('finHmDurPreview').textContent = dur ? dur+' HM' : '— HM';
     const monthKey = tglEl.value ? tglEl.value.slice(0,7) : finMonthKey(new Date());
-    const hariKerja = finHmInMonth(rows, monthKey).length + (dur>0?1:0);
+    const rowsExcl = finEditingHmId ? rows.filter(r=>r.id!==finEditingHmId) : rows;
+    const hariKerja = finHmInMonth(rowsExcl, monthKey).length + (dur>0?1:0);
     document.getElementById('finHmHariPreview').textContent = hariKerja+' hari';
   }
   awalEl.addEventListener('input', preview); akhirEl.addEventListener('input', preview); tglEl.addEventListener('input', preview);
   preview();
+
+  function resetToAddMode(){
+    finEditingHmId = null;
+    document.getElementById('finHmFormLabel').textContent = 'Input HM Harian';
+    document.getElementById('finHmSaveBtn').textContent = 'Simpan';
+    document.getElementById('finHmCancelEditBtn').style.display = 'none';
+    tglEl.value = finHmLastDate || finTodayStr();
+    awalEl.value = lastRow ? lastRow.hmAkhir : '';
+    akhirEl.value = '';
+    preview();
+  }
+  document.getElementById('finHmCancelEditBtn').addEventListener('click', resetToAddMode);
 
   document.getElementById('finHmSaveBtn').addEventListener('click', async ()=>{
     const tgl = tglEl.value, hmAwal = parseFloat(awalEl.value), hmAkhir = parseFloat(akhirEl.value);
     if(!tgl){ showToast('Pilih tanggal dulu'); return; }
     if(isNaN(hmAwal)){ showToast('HM Awal kosong'); return; }
     if(isNaN(hmAkhir) || hmAkhir<=hmAwal){ showToast('HM Akhir harus lebih besar dari HM Awal'); return; }
-    await finAddHm(unitId, tgl, hmAwal, hmAkhir);
-    // inget tanggal ini biar sheet gak balik ke "hari ini" pas dibuka lagi — dimajuin 1 hari
-    // biar gampang lanjut input HM hari berikutnya (khas kalo lagi ngejar backlog HM lama).
-    finHmLastDate = finAddDaysStr(tgl, 1);
-    showToast('Tersimpan');
+    if(finEditingHmId){
+      await finUpdateHm(unitId, finEditingHmId, tgl, hmAwal, hmAkhir);
+      showToast('Perubahan disimpan');
+    } else {
+      await finAddHm(unitId, tgl, hmAwal, hmAkhir);
+      // inget tanggal ini biar sheet gak balik ke "hari ini" pas dibuka lagi — dimajuin 1 hari
+      // biar gampang lanjut input HM hari berikutnya (khas kalo lagi ngejar backlog HM lama).
+      finHmLastDate = finAddDaysStr(tgl, 1);
+      showToast('Tersimpan');
+    }
+    finEditingHmId = null;
     renderFinEksa();
   });
 
+  document.getElementById('finHmMonthNavWrap').innerHTML = finMonthNavHtml();
+  finWireMonthNav(renderFinEksa);
+
   const histEl = document.getElementById('finHmHistory');
-  const recent = [...rows].reverse().slice(0,15);
-  histEl.innerHTML = recent.length ? recent.map(r=>`
-    <div class="fin-hm-row" data-id="${r.id}">
+  const monthKey = finMonthKey(finMonthCursor);
+  const monthRows = [...finHmInMonth(rows, monthKey)].reverse();
+  histEl.innerHTML = monthRows.length ? monthRows.map(r=>`
+    <div class="fin-hm-row" data-id="${r.id}" style="cursor:pointer;">
       <div><div class="fin-hm-date">${r.tgl.split('-').reverse().join('/')}</div><div class="fin-hm-sub">${r.hmAwal} → ${r.hmAkhir}</div></div>
       <div style="display:flex; align-items:center; gap:10px;"><div class="fin-hm-dur">${r.dur} HM</div><button class="del" data-del="${r.id}" style="background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink-soft);cursor:pointer;padding:4px 8px;font-size:12px;">✕</button></div>
     </div>
-  `).join('') : '<div class="fin-empty">Belum ada data HM.</div>';
+  `).join('') : '<div class="fin-empty">Belum ada data HM bulan ini.</div>';
+  histEl.querySelectorAll('.fin-hm-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const r = rows.find(x=>x.id===row.dataset.id); if(!r) return;
+      finEditingHmId = r.id;
+      document.getElementById('finHmFormLabel').textContent = 'Edit HM';
+      document.getElementById('finHmSaveBtn').textContent = 'Update';
+      document.getElementById('finHmCancelEditBtn').style.display = '';
+      tglEl.value = r.tgl; awalEl.value = r.hmAwal; akhirEl.value = r.hmAkhir;
+      preview();
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
   histEl.querySelectorAll('[data-del]').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
       if(!confirm('Hapus data HM ini?')) return;
       await finDeleteHm(unitId, btn.dataset.del);
+      if(finEditingHmId===btn.dataset.del) finEditingHmId=null;
       showToast('Dihapus');
       renderFinEksa();
     });
